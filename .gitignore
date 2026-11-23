@@ -15,6 +15,9 @@
 !.env.example
 *.pem
 
+# outdated plan, kept locally for reference only
+plan-v1.md
+
 # misc
 .DS_Store
 npm-debug.log*

@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Milestone 1 (foundation) is built; Milestone 2 is next. **Pitch In** is an internal board where an AI team posts small wishlist tasks from company repos and any coworker picks one up, runs it in their own Claude session, and opens a PR for the task owner to review.
 
 - `plan.md` is the source of truth: decisions, data model, checks, milestones, and the first prompt to start building.
-- `plan-v1.md` is the pre-review version, kept for reference only. It is out of date (Vercel, 72-hour locks, token-sharing pitch); never build from it.
+- `plan-v1.md` is the pre-review version, kept locally for reference only and ignored by git (the repo is public). It is out of date (Vercel, 72-hour locks, token-sharing pitch); never build from it or commit it.
 - A formatted copy of the plan lives at https://claude.ai/artifact/KsJQZQF2ksRtUbVzaYJACB. When `plan.md` changes in a way that affects it, mention that the doc is now stale.
-- The folder is a local git repo with no remote yet.
+- The repo is public at https://github.com/HakimGtat/pitch-in (branch `main`). Commits use this repo's local identity `HakimGtat <71414445+HakimGtat@users.noreply.github.com>`.
 - `AGENTS.md` is written by `next dev` (Next.js 16.4 agent rules). Next 16 differs from older versions: check `node_modules/next/dist/docs/` before using an API you are unsure of.
 
 Build one milestone at a time, in the order `plan.md` lists them, and stop when that milestone's "Done when" is met.
