@@ -1,0 +1,67 @@
+# Pitch In: web app, worker, webhook relay and Postgres, all local.
+# Start with: docker compose up -d --build
+
+x-app: &app
+  build: .
+  image: pitch-in:local
+  env_file: .env
+  environment:
+    # Containers reach Postgres by its service name. Built from the POSTGRES_* values in .env.
+    DATABASE_URL: postgres://${POSTGRES_USER:-pitchin}:${POSTGRES_PASSWORD:-pitchin}@db:5432/${POSTGRES_DB:-pitchin}
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pitchin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pitchin}
+      POSTGRES_DB: ${POSTGRES_DB:-pitchin}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Only reachable from this machine, for `npm run dev` and database tools.
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["node", "dist/migrate.mjs"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    command: ["node", "server.js"]
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *app
+    command: ["node", "dist/worker.mjs"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Forwards GitHub webhooks from the smee.io channel in SMEE_URL to the web app.
+  relay:
+    <<: *app
+    command: ["node", "dist/relay.mjs"]
+    environment:
+      RELAY_TARGET: http://web:3000/api/github/webhooks
+    restart: on-failure
+    depends_on:
+      - web
+
+volumes:
+  pgdata:

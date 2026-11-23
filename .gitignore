@@ -1,0 +1,22 @@
+# dependencies
+/node_modules
+
+# testing
+/coverage
+
+# next.js and bundled worker scripts
+/.next/
+/out/
+/dist/
+
+# secrets: never commit real config or keys
+.env
+.env.*
+!.env.example
+*.pem
+
+# misc
+.DS_Store
+npm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
