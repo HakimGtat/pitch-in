@@ -1,6 +1,9 @@
 # Pitch In: web app, worker, webhook relay and Postgres, all local.
 # Start with: docker compose up -d --build
 
+# Fixed name, so container and volume names don't depend on the folder name.
+name: pitch-in
+
 x-app: &app
   build: .
   image: pitch-in:local

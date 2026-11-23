@@ -67,7 +67,7 @@ export default async function Admin({
       {notice ? <Notice kind="success">{notice}</Notice> : null}
       {error ? <Notice kind="error">{error}</Notice> : null}
 
-      <Section title="People" aside={<span className="text-sm text-stone-500">{people.length} signed in so far</span>}>
+      <Section title="People" aside={<span className="text-sm text-stone-500">{people.length} {people.length === 1 ? "person" : "people"}</span>}>
         <div className="-mx-6 overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="border-y border-stone-200 bg-stone-50 text-xs uppercase tracking-wide text-stone-500">

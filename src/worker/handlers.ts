@@ -36,7 +36,7 @@ export async function handleGitHubWebhook(
         deliveryId: job.deliveryId,
       },
     });
-    log.info(`GitHub webhook ${label}: App ${job.action} on ${account} by ${sender ?? "unknown"}`);
+    log.info(`GitHub webhook ${label}: ${INSTALLATION_ACTIONS[job.action]} on ${account} by ${sender ?? "unknown"}`);
     return;
   }
 

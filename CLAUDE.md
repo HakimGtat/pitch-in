@@ -22,6 +22,8 @@ Build one milestone at a time, in the order `plan.md` lists them, and stop when 
 - Typecheck and lint: `npm run typecheck`, `npm run lint`
 - Build: `npm run build` (Next.js standalone build, then esbuild bundles `dist/worker.mjs`, `dist/migrate.mjs`, `dist/relay.mjs`)
 - After changing `src/lib/db/schema.ts`: `npm run db:generate` writes a new SQL migration in `drizzle/`. Never edit applied migrations.
+- Docker isn't on the Bash tool's PATH on this machine. Run `docker` from PowerShell after refreshing PATH from the Machine and User environment variables.
+- Lockfile gotcha: npm 11.6 on Windows drops the optional `node_modules/@emnapi/runtime` entry whenever it rewrites `package-lock.json`, and then `npm ci` in the Docker build fails ("Missing: @emnapi/runtime from lock file"). Fix: copy `package.json` into an empty folder, run `npm install --package-lock-only --ignore-scripts` there, and copy the fresh lockfile back without running `npm install` in the project afterwards.
 
 ## Code conventions
 

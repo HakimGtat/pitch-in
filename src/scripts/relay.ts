@@ -24,8 +24,8 @@ const client = new SmeeClient({
   },
 });
 
+// smee-client logs "Forwarding <source> to <target>" itself once connected.
 await client.start();
-console.log(`[relay] Forwarding ${source} -> ${target}`);
 
 const stop = async () => {
   await client.stop();
