@@ -17,7 +17,8 @@ import { recordQuestion } from "@/lib/questions";
 import { refreshRepo, reposForPush } from "@/lib/repos";
 
 /** What the handlers need from outside. Tests pass a fake GitHub and a fake scanner. */
-export type HandlerDeps = { repoGitHub: () => RepoGitHub; scanner?: () => SecretScanner };
+/** What the handlers need from outside. Tests pass a fake GitHub and a fake scanner. `appId` is the Pitch In App's own id. */
+export type HandlerDeps = { repoGitHub: () => RepoGitHub; scanner?: () => SecretScanner; appId?: () => number | null };
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v && typeof v === "object" ? (v as Obj) : {});
@@ -74,11 +75,8 @@ export async function handleGitHubWebhook(
       log.info(`GitHub webhook push to ${str(repository.full_name) ?? repository.id}, which isn't connected; ignored`);
       return;
     }
-    const updated = await refreshRepo(db, deps.repoGitHub(), repo.id);
-    log.info(
-      `Refreshed ${updated.fullName} after a push: CI ${updated.hasCi ? "found" : "missing"}, PROJECT_BRIEF.md ${updated.projectBrief ? "found" : "missing"}`,
-    );
-    // Did this change to the default branch come through an owner-merged PR? Checked shortly, by its own job.
+    // Did this change to the default branch come through an owner-merged PR? Checked shortly, by its own job,
+    // queued first so a failing refresh can't skip it.
     const after = str(body.after);
     if (after) {
       await queuePushCheck(db, {
@@ -89,6 +87,10 @@ export async function handleGitHubWebhook(
         forced: body.forced === true,
       });
     }
+    const updated = await refreshRepo(db, deps.repoGitHub(), repo.id);
+    log.info(
+      `Refreshed ${updated.fullName} after a push: CI ${updated.hasCi ? "found" : "missing"}, PROJECT_BRIEF.md ${updated.projectBrief ? "found" : "missing"}`,
+    );
     return;
   }
 
@@ -151,7 +153,10 @@ export async function handleGitHubWebhook(
   // The repo's own CI finished: check its PRs again. Our own check run never triggers this.
   if ((job.event === "check_suite" || job.event === "check_run") && repo) {
     const thing = obj(job.event === "check_suite" ? body.check_suite : body.check_run);
-    if (job.action !== "completed" || str(thing.name) === SITE_CHECK_NAME || str(obj(thing.app).name)?.startsWith("Pitch In")) {
+    // Our own check suite or run finishing never triggers this. The App can be renamed, so its id decides.
+    const ourId = deps.appId?.() ?? null;
+    const fromUs = ourId !== null ? Number(obj(thing.app).id) === ourId : Boolean(str(obj(thing.app).name)?.startsWith("Pitch In"));
+    if (job.action !== "completed" || str(thing.name) === SITE_CHECK_NAME || fromUs) {
       log.info(`GitHub webhook ${label}: nothing to check again`);
       return;
     }
@@ -217,5 +222,9 @@ export function createHandlers(deps: HandlerDeps): Record<string, JobHandler> {
 
 export const handlers = createHandlers({
   repoGitHub: () => createRepoGitHub(getConfig()),
+  appId: () => {
+    const id = Number(getConfig().githubApp?.appId);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  },
   scanner: () => gitleaksScanner(),
 });

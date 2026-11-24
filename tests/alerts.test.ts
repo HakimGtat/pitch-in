@@ -170,3 +170,11 @@ describe("the admin page", () => {
     await expect(resolveAlert(db, root.id, open.id)).rejects.toThrow("already resolved");
   });
 });
+
+describe("a forced push", () => {
+  it("raises a direct_push alert even when it lands on an owner-merged commit", async () => {
+    merged(7, "olive", "m7");
+    expect(await checkPush(db, fake.gh, { repoId: repo.id, after: "m7", before: "newer", pusher: "olive", forced: true })).toBe("alert");
+    expect((await db.select().from(alerts))[0]).toMatchObject({ kind: "direct_push", details: { sha: "m7", forced: true } });
+  });
+});

@@ -9,6 +9,8 @@ export type ChangedFile = {
   status?: string;
   /** The unified-diff patch text. GitHub leaves it out for binary and very large files. */
   patch?: string;
+  /** For a changed text file without a patch: the whole file at the PR's head, so it can still be scanned. */
+  content?: string;
 };
 
 /** A CI result for the PR's head commit: a check run, or a commit status mapped to one. */

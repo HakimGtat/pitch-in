@@ -305,3 +305,23 @@ describe("waiting for CI", () => {
     expect(ours().at(-1)?.run).toMatchObject({ status: "completed", conclusion: "failure" });
   });
 });
+
+describe("the site's own check suite", () => {
+  it("never triggers a re-check, whatever the App is named", async () => {
+    fake.addPull("acme/uploader", { number: 40, author: "alice", body: goodBody(taskId), headSha: "s1" }, goodFiles);
+    fake.setCi("acme/uploader", "s1", [{ name: "test", conclusion: "success" }]);
+    await sendPr(40);
+    const before = ours().length;
+    const raw = JSON.stringify({
+      action: "completed",
+      repository: { id: 42, full_name: "acme/uploader", default_branch: "main" },
+      check_suite: { head_sha: "s1", app: { id: 999, name: "Renamed by the admin" }, pull_requests: [{ number: 40 }] },
+    });
+    await receiveWebhook(db, { secret, rawBody: raw, event: "check_suite", deliveryId: "own-suite", signature: sign(raw) });
+    const withId = createHandlers({ repoGitHub: () => fake.gh, scanner: () => noSecrets, appId: () => 999 });
+    while (await runNextJob(db, withId, quiet)) {
+      /* run */
+    }
+    expect(ours()).toHaveLength(before);
+  });
+});

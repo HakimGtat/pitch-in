@@ -123,3 +123,12 @@ describe("the Evidence check", () => {
     expect(r.passed).toBe(true);
   });
 });
+
+describe("pointers that start like CI", () => {
+  it("are paths when they're paths", () => {
+    expect(parsePointer("ci/deploy.sh:12")).toEqual({ kind: "lines", path: "ci/deploy.sh", start: 12, end: 12 });
+    expect(parsePointer("CI.md:3")).toEqual({ kind: "lines", path: "CI.md", start: 3, end: 3 });
+    expect(parsePointer("CI (green)")).toEqual({ kind: "ci" });
+    expect(parsePointer("CI")).toEqual({ kind: "ci" });
+  });
+});

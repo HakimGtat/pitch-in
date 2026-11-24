@@ -109,3 +109,19 @@ describe("the Dockerfile", () => {
     expect(docker).toContain("/usr/local/bin/gitleaks");
   });
 });
+
+describe("changed files GitHub sends without a patch", () => {
+  it("are scanned whole when the worker fetched them as text", async () => {
+    const big = { path: "data/seed.json", additions: 9000, deletions: 0, content: `{\n  "key": "${FAKE_KEY}"\n}` };
+    expect(await checkSecrets([big], fakeScanner())).toEqual({
+      name: "Secrets",
+      passed: false,
+      detail: "possible secret in data/seed.json:2 (github-pat)",
+    });
+  });
+
+  it("are named when they couldn't be scanned", async () => {
+    const r = await checkSecrets([files[1], files[2]], fakeScanner());
+    expect(r).toEqual({ name: "Secrets", passed: true, detail: "nothing found; not scanned (binary or too large): logo.png" });
+  });
+});

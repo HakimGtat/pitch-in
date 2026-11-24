@@ -124,6 +124,11 @@ export async function checkPush(
 ): Promise<"reviewed" | "alerted_on_merge" | "alert" | "skipped"> {
   const [repo] = await db.select().from(repos).where(eq(repos.id, job.repoId));
   if (!repo || repo.removedAt || isZeroSha(job.after)) return "skipped";
+  // A forced push rewrites history, even when it lands on an owner-merged commit.
+  if (job.forced) {
+    await raise(db, repo, "direct_push", { field: "sha", value: job.after }, { pusher: job.pusher, forced: true, before: job.before }, now);
+    return "alert";
+  }
   for (const number of await gh.pullsForCommit(repo.fullName, job.after)) {
     const pr = await gh.getPullRequest(repo.fullName, number);
     if (!pr?.merged || pr.mergeCommitSha !== job.after || pr.baseRef !== repo.defaultBranch) continue;

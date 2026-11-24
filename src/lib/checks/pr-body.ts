@@ -89,7 +89,8 @@ export type Pointer = { kind: "ci" } | { kind: "lines"; path: string; start: num
  */
 export function parsePointer(text: string | null | undefined): Pointer | null {
   const t = (text ?? "").trim().replace(/^[`'"]+/, "");
-  if (/^CI\b/i.test(t)) return { kind: "ci" };
+  // "CI" alone, not a path that starts with it (ci/deploy.sh:12, CI.md:3).
+  if (/^CI(?![\w./-])/i.test(t)) return { kind: "ci" };
   const m = /^(?:\.\/)?([^\s`'",:]+):(\d+)(?:\s*[-–]\s*(\d+))?/.exec(t);
   if (!m) return null;
   const a = Number(m[2]);

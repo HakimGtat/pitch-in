@@ -209,7 +209,7 @@ export async function runChecks(
   const { submission, task } = row;
   if (!OPEN_SUBMISSION.has(submission.status)) return { status: "skipped", why: `the submission is ${submission.status}` };
 
-  const files = await deps.gh.listPullRequestFiles(repo.fullName, pr.number);
+  const files = await withContentForUnpatched(deps.gh, repo.fullName, pr.headSha, await deps.gh.listPullRequestFiles(repo.fullName, pr.number));
   const ci = [
     ...(await deps.gh.listCheckRuns(repo.fullName, pr.headSha)),
     ...(await deps.gh.listCommitStatuses(repo.fullName, pr.headSha)).map(fromCommitStatus),
@@ -273,6 +273,21 @@ export async function runChecks(
       .onConflictDoNothing({ target: jobs.dedupeKey });
   }
   return { status: "checked", passed: results.length - failed, failed, ciPending };
+}
+
+/** GitHub sends no patch for very large diffs; fetch those files whole (text only, up to 1 MB) so Secrets can scan them. */
+async function withContentForUnpatched(gh: RepoGitHub, fullName: string, ref: string, files: ChangedFile[]): Promise<ChangedFile[]> {
+  const out: ChangedFile[] = [];
+  for (const f of files) {
+    if (f.patch !== undefined || f.status === "removed") {
+      out.push(f);
+      continue;
+    }
+    const file = await gh.readFile(fullName, f.path, ref).catch(() => null);
+    const text = file?.text;
+    out.push(text !== undefined && !text.includes(" ") && text.length <= 1_000_000 ? { ...f, content: text } : f);
+  }
+  return out;
 }
 
 export function prInfo(repo: Repo, pr: PullRequest) {
