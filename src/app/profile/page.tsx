@@ -11,16 +11,17 @@ import { TAKE_ON, TAKE_ON_LABEL, TAKE_ON_SHOWS } from "@/lib/sizing";
 import { helpedShip } from "@/lib/merge";
 import { taskRef } from "@/lib/prompt";
 import { loadWaitingOnOwner } from "@/lib/questions";
-import { loadOwnerQueue } from "@/lib/views";
+import { loadOwnerQueue, loadUnlinkedForOwner } from "@/lib/views";
 
 export default async function Profile({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const user = await requireUser();
   const { saved } = await searchParams;
   const { aiTeam, org } = getConfig();
-  const [queue, waiting, shipped] = await Promise.all([
+  const [queue, waiting, shipped, unlinked] = await Promise.all([
     loadOwnerQueue(getDb(), user.id),
     loadWaitingOnOwner(getDb(), user.id),
     helpedShip(getDb(), user.id),
+    loadUnlinkedForOwner(getDb(), user.id, new Date()),
   ]);
 
   return (
@@ -44,7 +45,7 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
         </div>
       </Card>
 
-      <OwnerQueue items={queue} waiting={waiting} />
+      <OwnerQueue items={queue} waiting={waiting} unlinked={unlinked} />
 
       <Card className="mb-6">
         <h2 className="font-semibold">Helped ship{shipped.count ? ` (${shipped.count})` : ""}</h2>

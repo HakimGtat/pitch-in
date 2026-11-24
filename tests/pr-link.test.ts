@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PermissionError } from "@/lib/admin";
-import { adoptTask } from "@/lib/adoption";
+import { adoptTask, handBack } from "@/lib/adoption";
 import { CHECKS_JOB } from "@/lib/checks/run";
 import { emptyBrief } from "@/lib/brief";
 import type { Db } from "@/lib/db/client";
@@ -195,9 +195,9 @@ describe("linking PRs", () => {
     expect(await unlinkedLog()).toHaveLength(1);
   });
 
-  it("doesn't link once the adopter's lock has lapsed and no PR is open", async () => {
-    const later = new Date(t0.getTime() + 49 * 3600_000);
-    expect((await linkPullRequest(db, pr(), later)).status).toBe("unlinked");
+  it("doesn't link once the adopter handed the task back", async () => {
+    await handBack(db, alice.id, taskId, t0);
+    expect((await linkPullRequest(db, pr(), t0)).status).toBe("unlinked");
   });
 
   it("ignores a PR into another branch: no link, no record", async () => {
@@ -287,8 +287,8 @@ describe("linking PRs", () => {
     });
 
     it("refuses when nobody holds the task", async () => {
-      const later = new Date(t0.getTime() + 49 * 3600_000);
-      await expect(linkPastedPr(db, owner.id, taskId, url(), later)).rejects.toThrow(/Nobody has taken/);
+      await handBack(db, alice.id, taskId, t0);
+      await expect(linkPastedPr(db, owner.id, taskId, url(), t0)).rejects.toThrow(/Nobody has taken/);
     });
 
     it("refuses a PR already linked to another task", async () => {

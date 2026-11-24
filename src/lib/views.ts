@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, ne, notInArray, or, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
 import {
   canAdoptMilestone,
   canAdoptTask,
@@ -10,6 +10,7 @@ import {
 import type { Db } from "./db/client";
 import {
   adoptions,
+  auditLog,
   milestones,
   projects,
   repos,
@@ -322,4 +323,49 @@ export async function loadOwnerQueue(db: Db, ownerId: number): Promise<OwnerQueu
       failing: failingLines(submission.checkResults as StoredResults),
     }))
     .sort((a, b) => rank(a.status) - rank(b.status));
+}
+
+export type UnlinkedPr = { taskId: number; title: string; prNumber: number; repoFullName: string; reason: string };
+
+/**
+ * PRs from the last two weeks that name one of the owner's open tasks but
+ * didn't link, with the reason. The owner can paste one to link it.
+ */
+export async function loadUnlinkedForOwner(db: Db, ownerId: number, now: Date): Promise<UnlinkedPr[]> {
+  const since = new Date(now.getTime() - 14 * 24 * 3600_000);
+  const rows = await db
+    .select({ target: auditLog.target, details: auditLog.details, task: tasks, repoFullName: repos.fullName })
+    .from(auditLog)
+    .innerJoin(tasks, eq(sql`(${auditLog.details}->>'taskId')::int`, tasks.id))
+    .innerJoin(repos, eq(tasks.repoId, repos.id))
+    .where(
+      and(
+        eq(auditLog.action, "pr.unlinked"),
+        gte(auditLog.createdAt, since),
+        eq(tasks.ownerId, ownerId),
+        notInArray(tasks.status, ["merged", "closed"]),
+        isNull(repos.removedAt),
+      ),
+    )
+    .orderBy(desc(auditLog.id));
+  const seen = new Set<string>();
+  const out: UnlinkedPr[] = [];
+  for (const r of rows) {
+    const prNumber = Number(/#(\d+)$/.exec(r.target ?? "")?.[1]);
+    if (!prNumber || seen.has(r.target!)) continue;
+    seen.add(r.target!);
+    const [linked] = await db
+      .select({ id: submissions.id })
+      .from(submissions)
+      .where(and(eq(submissions.taskId, r.task.id), eq(submissions.prNumber, prNumber), ne(submissions.status, "closed")));
+    if (linked) continue;
+    out.push({
+      taskId: r.task.id,
+      title: r.task.title,
+      prNumber,
+      repoFullName: r.repoFullName,
+      reason: String((r.details as { reason?: string } | null)?.reason ?? ""),
+    });
+  }
+  return out;
 }

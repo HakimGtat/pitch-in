@@ -11,7 +11,7 @@ import { getDb } from "@/lib/db/client";
 import { taskRef } from "@/lib/prompt";
 import { offersWholeMilestones, parseTakeOn, TAKE_ON, TAKE_ON_LABEL, TAKE_ON_SHOWS } from "@/lib/sizing";
 import { loadWaitingOnOwner } from "@/lib/questions";
-import { loadBoard, loadHeldBy, loadOwnerQueue } from "@/lib/views";
+import { loadBoard, loadHeldBy, loadOwnerQueue, loadUnlinkedForOwner } from "@/lib/views";
 
 const signInErrors: Record<string, (team: string, org: string) => string> = {
   not_in_team: (team, org) =>
@@ -77,11 +77,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   const now = new Date();
   const db = getDb();
   const takeOn = parseTakeOn(search.take) ?? user.takeOn;
-  const [board, mine, queue, waiting] = await Promise.all([
+  const [board, mine, queue, waiting, unlinked] = await Promise.all([
     loadBoard(db, user, now),
     loadHeldBy(db, user.id, now),
     loadOwnerQueue(db, user.id),
     loadWaitingOnOwner(db, user.id),
+    loadUnlinkedForOwner(db, user.id, now),
   ]);
   const view = filterBoard(board, takeOn);
   const wholeMilestones = offersWholeMilestones(takeOn);
@@ -102,7 +103,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
       </div>
       <Flash notice={search.notice} error={search.error} />
 
-      <OwnerQueue items={queue} waiting={waiting} />
+      <OwnerQueue items={queue} waiting={waiting} unlinked={unlinked} />
 
       <Card className="mb-6">
         <h2 className="font-semibold">How much do you want to take on?</h2>

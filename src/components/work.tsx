@@ -4,7 +4,7 @@ import type { TaskBrief, TaskKind, SizeTier } from "@/lib/db/schema";
 import { taskRef } from "@/lib/prompt";
 import { formatLines, LINE_CAP, TIER_LABEL } from "@/lib/sizing";
 import type { WaitingItem } from "@/lib/questions";
-import type { FullTaskView, OwnerQueueItem } from "@/lib/views";
+import type { FullTaskView, OwnerQueueItem, UnlinkedPr } from "@/lib/views";
 import { Badge, Card, Code, Notice } from "./ui";
 
 /** ?notice= and ?error= messages after an action. */
@@ -168,8 +168,16 @@ export function BriefView({
 }
 
 /** The owner's tasks whose PRs need them: failed checks first, then ready for review. */
-export function OwnerQueue({ items, waiting = [] }: { items: OwnerQueueItem[]; waiting?: WaitingItem[] }) {
-  if (items.length === 0 && waiting.length === 0) return null;
+export function OwnerQueue({
+  items,
+  waiting = [],
+  unlinked = [],
+}: {
+  items: OwnerQueueItem[];
+  waiting?: WaitingItem[];
+  unlinked?: UnlinkedPr[];
+}) {
+  if (items.length === 0 && waiting.length === 0 && unlinked.length === 0) return null;
   return (
     <Card className="mb-6 border-amber-200 bg-amber-50/40">
       <h2 className="font-semibold">Needs you</h2>
@@ -185,6 +193,20 @@ export function OwnerQueue({ items, waiting = [] }: { items: OwnerQueueItem[]; w
               <Badge tone="amber">Waiting on you: a question on PR #{w.prNumber}</Badge>
             </div>
             <p className="mt-1 line-clamp-2 text-stone-600">{w.question}</p>
+          </li>
+        ))}
+        {unlinked.map((u) => (
+          <li key={`u-${u.repoFullName}-${u.prNumber}`} className="py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Link href={`/tasks/${u.taskId}`} className="font-medium hover:underline">
+                <span className="mr-2 font-mono text-xs text-stone-500">{taskRef(u.taskId)}</span>
+                {u.title}
+              </Link>
+              <Badge tone="amber">PR #{u.prNumber} didn&apos;t link</Badge>
+            </div>
+            <p className="mt-1 text-stone-600">
+              {u.reason} If it&apos;s the right PR, paste its link on the task page.
+            </p>
           </li>
         ))}
         {items.map((i) => (

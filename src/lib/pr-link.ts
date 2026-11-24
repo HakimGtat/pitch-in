@@ -2,7 +2,8 @@ import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { getUser, PermissionError } from "./admin";
 import { writeAudit } from "./audit";
 import type { Db } from "./db/client";
-import { auditLog, submissions, tasks } from "./db/schema";
+import { adoptions, auditLog, submissions, tasks, users } from "./db/schema";
+import { renewLock } from "./merge";
 import { parseTaskLine } from "./checks/pr-body";
 import { queueChecks } from "./checks/run";
 import { taskRef } from "./prompt";
@@ -100,6 +101,16 @@ async function existingLink(db: Db, repoId: number, number: number, exceptTaskId
 
 const OPEN = new Set<string>(OPEN_SUBMISSION);
 
+/** Who an adoption row belongs to (used for one whose 48 hours ran out with nobody else taking the task). */
+async function adopterOf(db: Db, adoptionId: number): Promise<{ userId: number; handle: string } | null> {
+  const [row] = await db
+    .select({ userId: adoptions.userId, handle: users.handle })
+    .from(adoptions)
+    .innerJoin(users, eq(adoptions.userId, users.id))
+    .where(and(eq(adoptions.id, adoptionId), eq(adoptions.status, "active")));
+  return row ?? null;
+}
+
 /** The task's other open PR, if it has one: one task, one PR. */
 async function otherOpenPr(db: Db, taskId: number, prNumber: number): Promise<number | null> {
   const [row] = await db
@@ -192,7 +203,15 @@ export async function linkPullRequest(db: Db, pr: PullRequestInfo, now: Date = n
   }
 
   const taskId = parseTaskLine(pr.body);
-  const task = taskId === null ? null : await loadTaskView(db, taskId, now);
+  let task = taskId === null ? null : await loadTaskView(db, taskId, now);
+  // A run that started before the 48 hours ran out can open its PR after: nobody else took the task, so it's still theirs.
+  if (task && !task.holder && task.adoptionId && task.status !== "merged" && task.status !== "closed") {
+    const lapsed = await adopterOf(db, task.adoptionId);
+    if (lapsed && lapsed.handle.toLowerCase() === pr.authorHandle.toLowerCase()) {
+      await renewLock(db, task.id, now);
+      task = await loadTaskView(db, task.id, now);
+    }
+  }
   const decision = decideLink({
     taskId,
     task: task && { id: task.id, repoId: task.repoId, status: task.status, holderHandle: task.holder?.handle ?? null },
@@ -284,12 +303,14 @@ export async function linkPastedPr(
   if (actor.blocked) throw new PermissionError("Blocked people can't link PRs.");
   const task = await loadTaskView(db, taskId, now);
   if (!task) throw new PermissionError("That task doesn't exist.");
-  const holder = task.holder;
-  if (actor.id !== task.ownerId && actor.id !== holder?.userId) {
+  // The person whose 48 hours ran out without anyone else taking the task still counts: their PR may have opened late.
+  const lapsed = !task.holder && task.adoptionId ? await adopterOf(db, task.adoptionId) : null;
+  if (actor.id !== task.ownerId && actor.id !== task.holder?.userId && actor.id !== lapsed?.userId) {
     throw new PermissionError("Only the person who took this on, or its owner, can link a PR.");
   }
   if (task.status === "merged" || task.status === "closed") throw new PermissionError("This task is already finished.");
-  if (!holder) throw new PermissionError("Nobody has taken this task on, so there is no PR to link.");
+  if (!task.holder && !lapsed) throw new PermissionError("Nobody has taken this task on, so there is no PR to link.");
+  const holder = task.holder ?? { userId: lapsed!.userId };
 
   const parsed = parsePrUrl(text);
   if (!parsed) throw new PermissionError("Paste the PR's web address, like https://github.com/owner/repo/pull/12.");
@@ -317,6 +338,7 @@ export async function linkPastedPr(
         .insert(submissions)
         .values({ taskId: task.id, prNumber: parsed.number, headSha: "", authorId: holder.userId, status: "checking", createdAt: now, updatedAt: now })
         .returning({ id: submissions.id });
+  if (lapsed) await renewLock(db, task.id, now);
   await writeAudit(db, {
     actorId: actor.id,
     action: "pr.linked",
