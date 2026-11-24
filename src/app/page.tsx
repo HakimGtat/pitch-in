@@ -10,6 +10,7 @@ import { getConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
 import { taskRef } from "@/lib/prompt";
 import { offersWholeMilestones, parseTakeOn, TAKE_ON, TAKE_ON_LABEL, TAKE_ON_SHOWS } from "@/lib/sizing";
+import { loadWaitingOnOwner } from "@/lib/questions";
 import { loadBoard, loadHeldBy, loadOwnerQueue } from "@/lib/views";
 
 const signInErrors: Record<string, (team: string, org: string) => string> = {
@@ -76,7 +77,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   const now = new Date();
   const db = getDb();
   const takeOn = parseTakeOn(search.take) ?? user.takeOn;
-  const [board, mine, queue] = await Promise.all([loadBoard(db, user, now), loadHeldBy(db, user.id, now), loadOwnerQueue(db, user.id)]);
+  const [board, mine, queue, waiting] = await Promise.all([
+    loadBoard(db, user, now),
+    loadHeldBy(db, user.id, now),
+    loadOwnerQueue(db, user.id),
+    loadWaitingOnOwner(db, user.id),
+  ]);
   const view = filterBoard(board, takeOn);
   const wholeMilestones = offersWholeMilestones(takeOn);
   const empty = view.projects.length === 0 && view.singles.length === 0;
@@ -96,7 +102,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
       </div>
       <Flash notice={search.notice} error={search.error} />
 
-      <OwnerQueue items={queue} />
+      <OwnerQueue items={queue} waiting={waiting} />
 
       <Card className="mb-6">
         <h2 className="font-semibold">How much do you want to take on?</h2>

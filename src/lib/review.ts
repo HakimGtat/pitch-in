@@ -8,6 +8,7 @@ import { submissions, tasks } from "./db/schema";
 import type { RepoGitHub } from "./github/repos";
 import { canReopen } from "./permissions";
 import { taskRef } from "./prompt";
+import { answerQuestionsFor } from "./questions";
 import { loadTaskView, OPEN_SUBMISSION } from "./views";
 
 // Reopen (plan.md, "Review with the owner's agent"): for a PR that isn't worth
@@ -70,6 +71,7 @@ export async function reopenTask(
         .update(submissions)
         .set({ status: "closed", updatedAt: now })
         .where(inArray(submissions.id, open.map((s) => s.id)));
+      await answerQuestionsFor(tx, open.map((s) => s.id), now);
     }
     const brief = { ...task.task.brief };
     brief.constraints = [brief.constraints.trim(), `${NOTE_PREFIX} ${reason}`].filter(Boolean).join(" ");

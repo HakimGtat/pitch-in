@@ -7,13 +7,14 @@ import { requireUser } from "@/lib/auth/current-user";
 import { getConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
 import { TAKE_ON, TAKE_ON_LABEL, TAKE_ON_SHOWS } from "@/lib/sizing";
+import { loadWaitingOnOwner } from "@/lib/questions";
 import { loadOwnerQueue } from "@/lib/views";
 
 export default async function Profile({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const user = await requireUser();
   const { saved } = await searchParams;
   const { aiTeam, org } = getConfig();
-  const queue = await loadOwnerQueue(getDb(), user.id);
+  const [queue, waiting] = await Promise.all([loadOwnerQueue(getDb(), user.id), loadWaitingOnOwner(getDb(), user.id)]);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -36,7 +37,7 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
         </div>
       </Card>
 
-      <OwnerQueue items={queue} />
+      <OwnerQueue items={queue} waiting={waiting} />
 
       <Card className="mb-6">
         <h2 className="font-semibold">How much do you want to take on?</h2>

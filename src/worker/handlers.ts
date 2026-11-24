@@ -11,6 +11,7 @@ import type { RepoGitHub } from "@/lib/github/repos";
 import type { JobHandler, Logger } from "@/lib/jobs";
 import { WEBHOOK_JOB, type GitHubWebhookJob } from "@/lib/github/webhook";
 import { handlePullRequestEvent } from "@/lib/pr-link";
+import { answerQuestionsOnPr, recordQuestion } from "@/lib/questions";
 import { refreshRepo, reposForPush } from "@/lib/repos";
 
 /** What the handlers need from outside. Tests pass a fake GitHub and a fake scanner. */
@@ -78,7 +79,7 @@ export async function handleGitHubWebhook(
     return;
   }
 
-  if (!repo && ["pull_request", "check_suite", "check_run"].includes(job.event)) {
+  if (!repo && ["pull_request", "check_suite", "check_run", "issue_comment"].includes(job.event)) {
     log.info(`GitHub webhook ${label} on ${str(repository.full_name) ?? "a repo"} that isn't connected; ignored`);
     return;
   }
@@ -95,6 +96,12 @@ export async function handleGitHubWebhook(
     else if (outcome.status === "ignored") log.info(`GitHub webhook ${label}: PR isn't into the default branch; ignored`);
     else if (outcome.status === "linked") log.info(`GitHub webhook ${label}: PR linked to task ${outcome.taskId}`);
     else log.info(`GitHub webhook ${label}: PR not linked: ${outcome.reason}`);
+
+    if (job.action === "closed") {
+      const answered = await answerQuestionsOnPr(db, repo.id, Number(pr.number), new Date());
+      if (answered) log.info(`GitHub webhook ${label}: ${answered} question(s) on PR #${pr.number} answered by its closing`);
+      return;
+    }
 
     const headSha = str(obj(pr.head).sha);
     const named = outcome?.status === "unlinked" && parseTaskLine(str(pr.body)) !== null;
@@ -119,6 +126,29 @@ export async function handleGitHubWebhook(
       await queueChecks(db, { repoId: repo.id, prNumber: Number(pr.number) }, headSha);
     }
     log.info(`GitHub webhook ${label}: checks queued again for ${prs.length} PR(s)`);
+    return;
+  }
+
+  // A comment on a PR: a contributor's agent may have left a question for the owner.
+  if (job.event === "issue_comment" && repo) {
+    const issue = obj(body.issue);
+    const comment = obj(body.comment);
+    if (job.action !== "created" || !issue.pull_request) {
+      log.info(`GitHub webhook ${label}: not a new PR comment; ignored`);
+      return;
+    }
+    const out = await recordQuestion(db, {
+      repoId: repo.id,
+      prNumber: Number(issue.number),
+      commentId: Number(comment.id),
+      body: str(comment.body) ?? "",
+      commenter: str(obj(comment.user).login) ?? "",
+    });
+    log.info(
+      out.status === "asked"
+        ? `GitHub webhook ${label}: question for the owner on PR #${issue.number} (task ${out.taskId})`
+        : `GitHub webhook ${label}: ${out.why}`,
+    );
     return;
   }
 

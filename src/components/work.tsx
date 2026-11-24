@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { TaskBrief, TaskKind, SizeTier } from "@/lib/db/schema";
 import { taskRef } from "@/lib/prompt";
 import { formatLines, LINE_CAP, TIER_LABEL } from "@/lib/sizing";
+import type { WaitingItem } from "@/lib/questions";
 import type { FullTaskView, OwnerQueueItem } from "@/lib/views";
 import { Badge, Card, Code, Notice } from "./ui";
 
@@ -167,13 +168,25 @@ export function BriefView({
 }
 
 /** The owner's tasks whose PRs need them: failed checks first, then ready for review. */
-export function OwnerQueue({ items }: { items: OwnerQueueItem[] }) {
-  if (items.length === 0) return null;
+export function OwnerQueue({ items, waiting = [] }: { items: OwnerQueueItem[]; waiting?: WaitingItem[] }) {
+  if (items.length === 0 && waiting.length === 0) return null;
   return (
     <Card className="mb-6 border-amber-200 bg-amber-50/40">
       <h2 className="font-semibold">Needs you</h2>
       <p className="mt-1 text-sm text-stone-600">PRs on your tasks. Nothing expires while you decide.</p>
       <ul className="mt-2 divide-y divide-stone-100">
+        {waiting.map((w) => (
+          <li key={`q-${w.taskId}-${w.prNumber}`} className="py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Link href={`/tasks/${w.taskId}`} className="font-medium hover:underline">
+                <span className="mr-2 font-mono text-xs text-stone-500">{taskRef(w.taskId)}</span>
+                {w.title}
+              </Link>
+              <Badge tone="amber">Waiting on you: a question on PR #{w.prNumber}</Badge>
+            </div>
+            <p className="mt-1 line-clamp-2 text-stone-600">{w.question}</p>
+          </li>
+        ))}
         {items.map((i) => (
           <li key={`${i.taskId}-${i.prNumber}`} className="py-2 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">

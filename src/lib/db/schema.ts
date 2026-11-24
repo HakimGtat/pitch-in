@@ -264,6 +264,25 @@ export const submissions = pgTable(
   (t) => [uniqueIndex("submissions_task_pr").on(t.taskId, t.prNumber)],
 );
 
+// A contributor's agent asking the owner on a draft PR (plan.md, "Questions for
+// the owner"). Picked up from the issue_comment webhook. Answered when the PR
+// closes (merged or not) or the task is reopened; nobody waits on it live.
+export const questions = pgTable(
+  "questions",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    submissionId: integer("submission_id")
+      .notNull()
+      .references(() => submissions.id),
+    githubCommentId: bigint("github_comment_id", { mode: "number" }).notNull().unique(),
+    // The comment text, so the owner's pages and Answer in Claude can show it.
+    body: text("body").notNull(),
+    askedAt: timestamp("asked_at", { withTimezone: true }).notNull(),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+  },
+  (t) => [index("questions_submission_idx").on(t.submissionId)],
+);
+
 export const reviews = pgTable("reviews", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   submissionId: integer("submission_id")
@@ -332,6 +351,7 @@ export type Milestone = typeof milestones.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
 export type Adoption = typeof adoptions.$inferSelect;
 export type Submission = typeof submissions.$inferSelect;
+export type Question = typeof questions.$inferSelect;
 export type SizeTier = (typeof sizeTierEnum.enumValues)[number];
 export type TakeOn = (typeof takeOnEnum.enumValues)[number];
 export type TaskKind = (typeof taskKindEnum.enumValues)[number];

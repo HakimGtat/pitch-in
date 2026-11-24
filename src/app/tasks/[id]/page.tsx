@@ -22,7 +22,10 @@ import { canCloseOrRelease } from "@/lib/permissions";
 import { GUIDED_STEPS, taskRef } from "@/lib/prompt";
 import { promptForTask } from "@/lib/start";
 import { loadTaskView, loadTaskViews, openSubmissionFor, prStatusFor, type PrViewer } from "@/lib/views";
+import { answerInClaude, openQuestionsFor } from "@/lib/questions";
+import type { StoredChecks } from "@/lib/checks/run";
 import { PrPanel } from "./pr-panel";
+import { QuestionCard } from "./question-card";
 import { reviewFor } from "./review";
 
 export default async function TaskPage({
@@ -65,6 +68,20 @@ export default async function TaskPage({
           ? "admin"
           : "other";
   const review = submission && viewer === "owner" ? await reviewFor(db, task, submission.id) : null;
+  const [question] = submission ? await openQuestionsFor(db, task.id) : [];
+  const checks = submission?.checkResults as StoredChecks | null | undefined;
+  const prUrl = question ? (checks?.pr.url ?? `https://github.com/${task.repoFullName}/pull/${question.prNumber}`) : "";
+  const answer =
+    question && viewer === "owner"
+      ? answerInClaude({
+          repoFullName: task.repoFullName,
+          prUrl,
+          headRef: checks?.pr.headRef ?? "the PR's branch",
+          ref: taskRef(task.id),
+          question: question.body,
+          briefMd: task.task.briefMd,
+        })
+      : null;
 
   return (
     <div>
@@ -167,6 +184,10 @@ export default async function TaskPage({
                 </Link>
               </p>
             </Card>
+          ) : null}
+
+          {question ? (
+            <QuestionCard viewer={viewer} prNumber={question.prNumber} prUrl={prUrl} question={question.body} answer={answer} />
           ) : null}
 
           {submission ? (
