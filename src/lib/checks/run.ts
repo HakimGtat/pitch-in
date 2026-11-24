@@ -293,7 +293,7 @@ async function withContentForUnpatched(gh: RepoGitHub, fullName: string, ref: st
     }
     const file = await gh.readFile(fullName, f.path, ref).catch(() => null);
     const text = file?.text;
-    out.push(text !== undefined && !text.includes(" ") && text.length <= 1_000_000 ? { ...f, content: text } : f);
+    out.push(text !== undefined && !text.includes("\u0000") && text.length <= 1_000_000 ? { ...f, content: text } : f);
   }
   return out;
 }
