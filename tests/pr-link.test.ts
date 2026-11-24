@@ -2,9 +2,10 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PermissionError } from "@/lib/admin";
 import { adoptTask } from "@/lib/adoption";
+import { CHECKS_JOB } from "@/lib/checks/run";
 import { emptyBrief } from "@/lib/brief";
 import type { Db } from "@/lib/db/client";
-import { auditLog, submissions } from "@/lib/db/schema";
+import { auditLog, submissions, jobs } from "@/lib/db/schema";
 import {
   decideLink,
   handlePullRequestEvent,
@@ -251,6 +252,13 @@ describe("linking PRs", () => {
       expect(out.prNumber).toBe(8);
       const [row] = await db.select().from(submissions);
       expect(row).toMatchObject({ taskId, prNumber: 8, authorId: alice.id, headSha: "", status: "checking" });
+    });
+
+    it("queues the checks for the pasted PR right away", async () => {
+      await linkPastedPr(db, alice.id, taskId, url(), t0);
+      const queued = await db.select().from(jobs).where(eq(jobs.type, CHECKS_JOB));
+      expect(queued).toHaveLength(1);
+      expect(queued[0].payload).toEqual({ repoId: repo.id, prNumber: 8 });
     });
 
     it("links the PR when the task owner pastes it, as the adopter's", async () => {

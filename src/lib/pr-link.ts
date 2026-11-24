@@ -4,6 +4,7 @@ import { writeAudit } from "./audit";
 import type { Db } from "./db/client";
 import { auditLog, submissions, tasks } from "./db/schema";
 import { parseTaskLine } from "./checks/pr-body";
+import { queueChecks } from "./checks/run";
 import { taskRef } from "./prompt";
 import { loadTaskView, type FullTaskView } from "./views";
 
@@ -239,5 +240,7 @@ export async function linkPastedPr(
     target: prTarget(task.repoFullName, parsed.number),
     details: { taskId: task.id, how: "pasted link" },
   });
+  // Check it now rather than waiting for GitHub's next event on the PR. The job reads the PR fresh.
+  await queueChecks(db, { repoId: task.repoId, prNumber: parsed.number }, `pasted-${row.id}`, now);
   return { submissionId: row.id, prNumber: parsed.number };
 }
