@@ -10,6 +10,7 @@ import {
   setTakeOn,
   unblockUser,
 } from "@/lib/admin";
+import { resolveAlert } from "@/lib/alerts";
 import { requireAdmin, requireUser } from "@/lib/auth/current-user";
 import { getDb } from "@/lib/db/client";
 import { parseTakeOn } from "@/lib/sizing";
@@ -95,4 +96,8 @@ export async function adminHandOver(formData: FormData) {
     (actorId) => handOverMainAdmin(getDb(), actorId, targetId(formData)),
     "Main admin role handed over.",
   );
+}
+
+export async function adminResolveAlert(formData: FormData) {
+  await adminChange((actorId) => resolveAlert(getDb(), actorId, Number(formData.get("alertId"))), "Alert resolved.");
 }

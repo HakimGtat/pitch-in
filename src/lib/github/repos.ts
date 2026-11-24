@@ -72,6 +72,8 @@ export interface RepoGitHub {
   updateCheckRun(fullName: string, id: number, run: CheckRunInput): Promise<void>;
   /** Comments on a PR as the Pitch In App, then closes it without merging. */
   closePullRequest(fullName: string, number: number, comment: string): Promise<void>;
+  /** Numbers of the PRs GitHub associates with a commit (a merge commit's own PR among them). */
+  pullsForCommit(fullName: string, sha: string): Promise<number[]>;
 }
 
 export const PROJECT_BRIEF_PATH = "PROJECT_BRIEF.md";

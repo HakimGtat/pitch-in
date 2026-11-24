@@ -249,6 +249,21 @@ export function createRepoGitHub(config: Config): RepoGitHub {
         state: "closed",
       });
     },
+
+    async pullsForCommit(fullName, sha) {
+      const kit = await octokit();
+      try {
+        const { data } = await kit.request("GET /repos/{owner}/{repo}/commits/{commit_sha}/pulls", {
+          ...splitName(fullName),
+          commit_sha: sha,
+          per_page: 100,
+        });
+        return data.map((p) => p.number);
+      } catch (err) {
+        if (isStatus(err, 404) || isStatus(err, 422)) return [];
+        throw err;
+      }
+    },
   };
 }
 

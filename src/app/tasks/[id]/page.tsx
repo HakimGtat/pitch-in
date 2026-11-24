@@ -11,7 +11,7 @@ import {
 } from "@/app/work-actions";
 import { CopyButton } from "@/components/copy-button";
 import { LocalTime } from "@/components/local-time";
-import { Badge, buttonClass, Card, dangerButtonClass, secondaryButtonClass } from "@/components/ui";
+import { Badge, buttonClass, Card, dangerButtonClass, Notice, secondaryButtonClass } from "@/components/ui";
 import { BriefView, Flash, KindBadge, TaskState, TierBadge } from "@/components/work";
 import { canAdoptMilestone, canAdoptTask, nextTaskInMilestone, waitsItsTurn } from "@/lib/adoption-rules";
 import { requireUser } from "@/lib/auth/current-user";
@@ -24,6 +24,7 @@ import { promptForTask } from "@/lib/start";
 import { loadTaskView, loadTaskViews, openSubmissionFor, prStatusFor, type PrViewer } from "@/lib/views";
 import { answerInClaude, openQuestionsFor } from "@/lib/questions";
 import type { StoredChecks } from "@/lib/checks/run";
+import { describeAlert, openAlertsForTask } from "@/lib/alerts";
 import { PrPanel } from "./pr-panel";
 import { QuestionCard } from "./question-card";
 import { reviewFor } from "./review";
@@ -69,6 +70,7 @@ export default async function TaskPage({
           : "other";
   const review = submission && viewer === "owner" ? await reviewFor(db, task, submission.id) : null;
   const [question] = submission ? await openQuestionsFor(db, task.id) : [];
+  const taskAlerts = await openAlertsForTask(db, task.id);
   const checks = submission?.checkResults as StoredChecks | null | undefined;
   const prUrl = question ? (checks?.pr.url ?? `https://github.com/${task.repoFullName}/pull/${question.prNumber}`) : "";
   const answer =
@@ -116,6 +118,11 @@ export default async function TaskPage({
         </div>
       </div>
       <Flash notice={notice} error={error} />
+      {taskAlerts.map((a) => (
+        <Notice key={a.id} kind="error">
+          Warning: {describeAlert(a)} An admin has been alerted.
+        </Notice>
+      ))}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-6">

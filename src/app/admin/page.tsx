@@ -1,6 +1,7 @@
 import {
   adminBlock,
   adminHandOver,
+  adminResolveAlert,
   adminSetProfile,
   adminUnblock,
 } from "@/app/actions";
@@ -16,6 +17,7 @@ import {
   StatusDot,
 } from "@/components/ui";
 import { listUsers } from "@/lib/admin";
+import { describeAlert, listOpenAlerts } from "@/lib/alerts";
 import { recentAudit } from "@/lib/audit";
 import { requireAdmin } from "@/lib/auth/current-user";
 import { getConfig } from "@/lib/config";
@@ -46,11 +48,12 @@ export default async function Admin({
   const { notice, error } = await searchParams;
   const config = getConfig();
   const db = getDb();
-  const [people, audit, webhooks, github] = await Promise.all([
+  const [people, audit, webhooks, github, openAlerts] = await Promise.all([
     listUsers(db),
     recentAudit(db, 50),
     recentJobs(db, WEBHOOK_JOB, 10),
     getGitHubStatus(config),
+    listOpenAlerts(db),
   ]);
   const mainAdmin = people.find((p) => p.isMainAdmin);
   const handOverTargets = people.filter((p) => canHandOverMainAdmin(me, p).ok);
@@ -66,6 +69,34 @@ export default async function Admin({
       </div>
       {notice ? <Notice kind="success">{notice}</Notice> : null}
       {error ? <Notice kind="error">{error}</Notice> : null}
+
+      {openAlerts.length ? (
+        <Section title="Alerts" aside={<span className="text-sm text-stone-500">{openAlerts.length} open</span>}>
+          <p className="mb-3 text-sm text-stone-600">
+            Merges that skipped the task owner&apos;s review, and changes to a default branch that didn&apos;t come through an
+            owner-merged PR. Free GitHub orgs can&apos;t protect branches on private repos, so Pitch In watches instead.
+          </p>
+          <ul className="divide-y divide-stone-100">
+            {openAlerts.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
+                <div>
+                  <Badge tone="amber">{a.kind === "unreviewed_merge" ? "Unreviewed merge" : "Direct push"}</Badge>{" "}
+                  <span className="text-stone-800">{describeAlert(a)}</span>{" "}
+                  <span className="text-stone-500">
+                    <LocalTime value={a.createdAt} />
+                  </span>
+                </div>
+                {me.isMainAdmin ? (
+                  <form action={adminResolveAlert}>
+                    <input type="hidden" name="alertId" value={a.id} />
+                    <button className={secondaryButtonClass}>Resolve</button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
 
       <Section title="People" aside={<span className="text-sm text-stone-500">{people.length} {people.length === 1 ? "person" : "people"}</span>}>
         <div className="-mx-6 overflow-x-auto">

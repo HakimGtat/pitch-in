@@ -1,3 +1,4 @@
+import { checkMerge, checkPush, PUSH_ALERT_JOB, queuePushCheck, type PushAlertJob } from "@/lib/alerts";
 import { writeAudit } from "@/lib/audit";
 import { gitleaksScanner } from "@/lib/checks/gitleaks";
 import { parseTaskLine } from "@/lib/checks/pr-body";
@@ -77,6 +78,17 @@ export async function handleGitHubWebhook(
     log.info(
       `Refreshed ${updated.fullName} after a push: CI ${updated.hasCi ? "found" : "missing"}, PROJECT_BRIEF.md ${updated.projectBrief ? "found" : "missing"}`,
     );
+    // Did this change to the default branch come through an owner-merged PR? Checked shortly, by its own job.
+    const after = str(body.after);
+    if (after) {
+      await queuePushCheck(db, {
+        repoId: repo.id,
+        after,
+        before: str(body.before) ?? "",
+        pusher: sender ?? str(obj(body.pusher).name) ?? null,
+        forced: body.forced === true,
+      });
+    }
     return;
   }
 
@@ -108,6 +120,15 @@ export async function handleGitHubWebhook(
         mergeCommitSha: str(pr.merge_commit_sha) ?? null,
       });
       log.info(`GitHub webhook ${label}: PR #${pr.number} ${closed.status === "merged" ? `merged, task ${closed.taskId} done` : closed.status.replace("_", " ")}`);
+      if (pr.merged === true) {
+        const verdict = await checkMerge(db, deps.repoGitHub(), {
+          repo,
+          prNumber: Number(pr.number),
+          mergedBy: str(obj(pr.merged_by).login) ?? null,
+          mergeCommitSha: str(pr.merge_commit_sha) ?? null,
+        });
+        if (verdict === "alert") log.info(`GitHub webhook ${label}: PR #${pr.number} merged by someone other than the task owner or a repo admin; alert raised`);
+      }
       return;
     }
 
@@ -179,8 +200,14 @@ export async function handleChecksJob(db: Db, job: ChecksJob, log: Logger, deps:
     );
 }
 
+export async function handlePushAlertJob(db: Db, job: PushAlertJob, log: Logger, deps: HandlerDeps): Promise<void> {
+  const verdict = await checkPush(db, deps.repoGitHub(), job);
+  log.info(`Push to repo ${job.repoId} at ${job.after.slice(0, 7)}: ${verdict === "alert" ? "no owner-merged PR, alert raised" : verdict.replace(/_/g, " ")}`);
+}
+
 export function createHandlers(deps: HandlerDeps): Record<string, JobHandler> {
   return {
+    [PUSH_ALERT_JOB]: (db, payload, log) => handlePushAlertJob(db, payload as PushAlertJob, log, deps),
     [WEBHOOK_JOB]: (db, payload, log) => handleGitHubWebhook(db, payload as GitHubWebhookJob, log, deps),
     [CHECKS_JOB]: (db, payload, log) => handleChecksJob(db, payload as ChecksJob, log, deps),
   };

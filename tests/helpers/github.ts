@@ -69,6 +69,10 @@ export function fakeGitHub() {
       if (pr) pr.state = "closed";
       world.closed.push({ fullName, number: n });
     },
+    pullsForCommit: async (fullName, sha) =>
+      [...world.pulls.entries()]
+        .filter(([key, pr]) => key.startsWith(`${fullName}#`) && (pr.mergeCommitSha === sha || pr.headSha === sha))
+        .map(([, pr]) => pr.number),
   };
 
   const addRepo = (id: number, fullName: string, files: Record<string, string>, perms: Record<string, RepoPermission>) => {
