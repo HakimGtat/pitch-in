@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, ne, notInArray, or, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, notInArray, or, type SQL } from "drizzle-orm";
 import {
   canAdoptMilestone,
   canAdoptTask,
@@ -19,9 +19,11 @@ import {
   type Milestone,
   type Project,
   type Repo,
+  type Submission,
   type Task,
 } from "./db/schema";
 import { effectiveTaskStatus, isHeld, milestoneStatus, type MilestoneStatus, type TaskStatus } from "./lock";
+import type { CheckResult } from "./checks/types";
 import type { Decision } from "./permissions";
 
 // Read-side views. The adoption lock is applied here, on read: an adoption
@@ -221,4 +223,96 @@ export async function loadHeldBy(db: Db, userId: number, now: Date): Promise<Ful
     now,
   );
   return views.filter((t) => t.holder?.userId === userId).sort((a, b) => b.id - a.id);
+}
+
+// ---------- the PR side of a task (plan.md, "Review-friendly PRs") ----------
+
+/** The task's open PR on GitHub, newest first, or null. */
+export async function openSubmissionFor(db: Db, taskId: number): Promise<Submission | null> {
+  const [row] = await db
+    .select()
+    .from(submissions)
+    .where(and(eq(submissions.taskId, taskId), inArray(submissions.status, [...OPEN_SUBMISSION])))
+    .orderBy(desc(submissions.id))
+    .limit(1);
+  return row ?? null;
+}
+
+type StoredResults = { results?: CheckResult[]; ciPending?: boolean } | null;
+
+const failingLines = (checks: StoredResults) =>
+  (checks?.results ?? []).filter((r) => !r.passed).map((r) => `${r.name}: ${r.detail}`);
+
+export type PrViewer = "owner" | "adopter" | "admin" | "other";
+export type PrAction = "open_pr" | "review" | "reopen";
+
+/**
+ * What one viewer sees about a task's open PR. The contributor's part ended
+ * when the PR opened, so the adopter gets no action, ever: failed checks and
+ * fixes are the owner's. Nothing here has a deadline.
+ */
+export function prStatusFor(
+  viewer: PrViewer,
+  submission: { status: Submission["status"]; checkResults: unknown },
+): { headline: string; failing: string[]; actions: PrAction[] } {
+  const checks = submission.checkResults as StoredResults;
+  const failing = failingLines(checks);
+  const running = submission.status === "checking";
+  const failed = submission.status === "checks_failed";
+  const ready = submission.status === "in_review";
+
+  if (viewer === "adopter") {
+    return {
+      headline: failed
+        ? "Your part is done. Some checks failed, and the owner handles that from here; nothing is needed from you."
+        : "Your part is done. The owner reviews the PR and handles anything that needs fixing; nothing is needed from you.",
+      failing,
+      actions: [],
+    };
+  }
+  if (viewer === "other") {
+    return { headline: ready ? "A PR for this task is in review." : "A PR for this task is open.", failing: [], actions: [] };
+  }
+  const headline = running
+    ? checks?.ciPending
+      ? "Checks are running: waiting for the repo's CI to finish."
+      : "Checks are running."
+    : failed
+      ? "Some checks failed. You can fix what's free to fix on GitHub (a PR description edit, say) and the checks run again, or reopen the task with a short reason. Nothing expires while you decide."
+      : "All seven checks passed. It's ready for your review.";
+  const actions: PrAction[] = ["open_pr"];
+  if (ready && viewer === "owner") actions.push("review");
+  actions.push("reopen");
+  return { headline, failing, actions };
+}
+
+export type OwnerQueueItem = {
+  taskId: number;
+  title: string;
+  prNumber: number;
+  repoFullName: string;
+  status: Submission["status"];
+  failing: string[];
+};
+
+/** The owner's tasks whose PRs need them: failed checks first, then ones ready for review. */
+export async function loadOwnerQueue(db: Db, ownerId: number): Promise<OwnerQueueItem[]> {
+  const rows = await db
+    .select({ submission: submissions, task: tasks, repoFullName: repos.fullName })
+    .from(submissions)
+    .innerJoin(tasks, eq(submissions.taskId, tasks.id))
+    .innerJoin(repos, eq(tasks.repoId, repos.id))
+    .where(and(eq(tasks.ownerId, ownerId), inArray(submissions.status, ["checks_failed", "in_review"]), isNull(repos.removedAt)))
+    .orderBy(asc(submissions.id));
+  const rank = (s: Submission["status"]) => (s === "checks_failed" ? 0 : 1);
+  return rows
+    .map(({ submission, task, repoFullName }) => ({
+      taskId: task.id,
+      title: task.title,
+      prNumber: submission.prNumber,
+      repoFullName,
+      status: submission.status,
+      failing: failingLines(submission.checkResults as StoredResults),
+    }))
+    .sort((a, b) => rank(a.status) - rank(b.status));
 }

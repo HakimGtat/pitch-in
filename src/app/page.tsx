@@ -3,14 +3,14 @@ import { redirect } from "next/navigation";
 import { adoptMilestoneAction } from "@/app/work-actions";
 import { LocalTime } from "@/components/local-time";
 import { buttonClass, Card, Notice, PageTitle, secondaryButtonClass } from "@/components/ui";
-import { Flash, TaskRow } from "@/components/work";
+import { Flash, OwnerQueue, TaskRow } from "@/components/work";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { filterBoard } from "@/lib/board-rules";
 import { getConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
 import { taskRef } from "@/lib/prompt";
 import { offersWholeMilestones, parseTakeOn, TAKE_ON, TAKE_ON_LABEL, TAKE_ON_SHOWS } from "@/lib/sizing";
-import { loadBoard, loadHeldBy } from "@/lib/views";
+import { loadBoard, loadHeldBy, loadOwnerQueue } from "@/lib/views";
 
 const signInErrors: Record<string, (team: string, org: string) => string> = {
   not_in_team: (team, org) =>
@@ -76,7 +76,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   const now = new Date();
   const db = getDb();
   const takeOn = parseTakeOn(search.take) ?? user.takeOn;
-  const [board, mine] = await Promise.all([loadBoard(db, user, now), loadHeldBy(db, user.id, now)]);
+  const [board, mine, queue] = await Promise.all([loadBoard(db, user, now), loadHeldBy(db, user.id, now), loadOwnerQueue(db, user.id)]);
   const view = filterBoard(board, takeOn);
   const wholeMilestones = offersWholeMilestones(takeOn);
   const empty = view.projects.length === 0 && view.singles.length === 0;
@@ -95,6 +95,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
         </div>
       </div>
       <Flash notice={search.notice} error={search.error} />
+
+      <OwnerQueue items={queue} />
 
       <Card className="mb-6">
         <h2 className="font-semibold">How much do you want to take on?</h2>

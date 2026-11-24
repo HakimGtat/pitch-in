@@ -2,14 +2,18 @@ import { switchOwnProfile } from "@/app/actions";
 import { chooseTakeOn } from "@/app/work-actions";
 import { DEVELOPER_TEXT, GUIDED_TEXT, ProfileChoice } from "@/components/profile-choice";
 import { Badge, buttonClass, Card, Notice, PageTitle } from "@/components/ui";
+import { OwnerQueue } from "@/components/work";
 import { requireUser } from "@/lib/auth/current-user";
 import { getConfig } from "@/lib/config";
+import { getDb } from "@/lib/db/client";
 import { TAKE_ON, TAKE_ON_LABEL, TAKE_ON_SHOWS } from "@/lib/sizing";
+import { loadOwnerQueue } from "@/lib/views";
 
 export default async function Profile({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
   const user = await requireUser();
   const { saved } = await searchParams;
   const { aiTeam, org } = getConfig();
+  const queue = await loadOwnerQueue(getDb(), user.id);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -31,6 +35,8 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
           </div>
         </div>
       </Card>
+
+      <OwnerQueue items={queue} />
 
       <Card className="mb-6">
         <h2 className="font-semibold">How much do you want to take on?</h2>

@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import type { TaskBrief, TaskKind, SizeTier } from "@/lib/db/schema";
 import { taskRef } from "@/lib/prompt";
 import { formatLines, LINE_CAP, TIER_LABEL } from "@/lib/sizing";
-import type { FullTaskView } from "@/lib/views";
-import { Badge, Code, Notice } from "./ui";
+import type { FullTaskView, OwnerQueueItem } from "@/lib/views";
+import { Badge, Card, Code, Notice } from "./ui";
 
 /** ?notice= and ?error= messages after an action. */
 export function Flash({ notice, error }: { notice?: string; error?: string }) {
@@ -163,5 +163,40 @@ export function BriefView({
         </Field>
       ) : null}
     </dl>
+  );
+}
+
+/** The owner's tasks whose PRs need them: failed checks first, then ready for review. */
+export function OwnerQueue({ items }: { items: OwnerQueueItem[] }) {
+  if (items.length === 0) return null;
+  return (
+    <Card className="mb-6 border-amber-200 bg-amber-50/40">
+      <h2 className="font-semibold">Needs you</h2>
+      <p className="mt-1 text-sm text-stone-600">PRs on your tasks. Nothing expires while you decide.</p>
+      <ul className="mt-2 divide-y divide-stone-100">
+        {items.map((i) => (
+          <li key={`${i.taskId}-${i.prNumber}`} className="py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Link href={`/tasks/${i.taskId}`} className="font-medium hover:underline">
+                <span className="mr-2 font-mono text-xs text-stone-500">{taskRef(i.taskId)}</span>
+                {i.title}
+              </Link>
+              {i.status === "checks_failed" ? (
+                <Badge tone="amber">Checks failed on PR #{i.prNumber}</Badge>
+              ) : (
+                <Badge tone="brand">PR #{i.prNumber} ready for review</Badge>
+              )}
+            </div>
+            {i.failing.length ? (
+              <ul className="mt-1 font-mono text-xs text-red-700">
+                {i.failing.map((f) => (
+                  <li key={f}>✗ {f}</li>
+                ))}
+              </ul>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }

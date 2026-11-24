@@ -21,7 +21,9 @@ import { timeLeft } from "@/lib/lock";
 import { canCloseOrRelease } from "@/lib/permissions";
 import { GUIDED_STEPS, taskRef } from "@/lib/prompt";
 import { promptForTask } from "@/lib/start";
-import { loadTaskView, loadTaskViews } from "@/lib/views";
+import { loadTaskView, loadTaskViews, openSubmissionFor, prStatusFor, type PrViewer } from "@/lib/views";
+import { PrPanel } from "./pr-panel";
+import { reviewFor } from "./review";
 
 export default async function TaskPage({
   params,
@@ -53,6 +55,16 @@ export default async function TaskPage({
   const start = mine ? await promptForTask(db, task, now) : null;
   const ownerOrAdmin = canCloseOrRelease(user, task).ok;
   const finished = task.status === "merged" || task.status === "closed";
+  const submission = finished ? null : await openSubmissionFor(db, task.id);
+  const viewer: PrViewer =
+    user.id === task.ownerId
+      ? "owner"
+      : mine || submission?.authorId === user.id
+        ? "adopter"
+        : ownerOrAdmin
+          ? "admin"
+          : "other";
+  const review = submission && viewer === "owner" ? await reviewFor(db, task, submission.id) : null;
 
   return (
     <div>
@@ -157,7 +169,11 @@ export default async function TaskPage({
             </Card>
           ) : null}
 
-          {startable && start ? (
+          {submission ? (
+            <PrPanel taskId={task.id} viewer={viewer} submission={submission} status={prStatusFor(viewer, submission)} review={review} />
+          ) : null}
+
+          {startable && start && !submission ? (
             <Card className="border-brand-100">
               <h2 className="font-semibold">Start the work</h2>
               {user.profile === "guided" ? (
@@ -211,7 +227,7 @@ export default async function TaskPage({
             </Card>
           ) : null}
 
-          {task.holder && (mine || user.id === task.ownerId) && !finished ? (
+          {task.holder && (mine || user.id === task.ownerId) && !finished && !submission ? (
             <Card>
               <h2 className="font-semibold">Link a PR</h2>
               <p className="mt-2 text-sm text-stone-600">
@@ -231,7 +247,7 @@ export default async function TaskPage({
             </Card>
           ) : null}
 
-          {mine ? (
+          {mine && !submission ? (
             <Card>
               <h2 className="font-semibold">Hand it back</h2>
               <p className="mt-2 text-sm text-stone-600">
