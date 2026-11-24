@@ -20,10 +20,10 @@ Working name: Pitch In (check for clashes before any public version). The folder
 | Audience | One company per install. Only members of one named GitHub team can sign in |
 | Who posts tasks | AI-team members (a GitHub team called `ai-team`) |
 | Who picks up tasks | Anyone signed in, with a Developer or Guided profile |
-| Who codes | The contributor's own agent, in their own Claude session, on their own seat |
+| Who does the work | The contributor's own agent, in their own Claude session, on their own seat |
 | Rewards | None. A "helped ship" list on profiles and a monthly report for the admin |
-| Task sizing | Small, Medium and Large tiers, each with a line cap |
-| Agents | Any coding agent. "Start in Claude" opens Claude Code on the web with the task filled in; "Copy brief" works for anything else |
+| Task sizing | Three tiers by effort: Small, Medium and Open-ended. Small and Medium have line caps; Open-ended has none and runs in checkpoints. Tasks can be code, docs, plans or whole milestones |
+| Agents | Any agent that can work in a repo. "Start in Claude" opens Claude Code on the web with the task filled in; "Copy brief" works for anything else |
 | Platform | GitHub.com, through a GitHub App each company registers itself. The site never hosts code |
 | Merging | Always on GitHub, never from the site |
 | Permissions | Taken from GitHub, plus a main admin and a block list |
@@ -50,8 +50,8 @@ The answer only sets the guidance level. Posting tasks needs membership in the `
 2. An AI-team member connects a repo (it must have CI with tests) and commits a `PROJECT_BRIEF.md`.
 3. An AI-team member posts a task with a Task Brief, a tier and allowed paths. The brief checker runs.
 4. A coworker filters the board by tier and adopts a task (48-hour lock).
-5. They click **Start in Claude**. Claude Code on the web opens with the repo and prompt filled in. They press Enter, wait, then click **Create PR**. Developers can instead copy the brief into any agent.
-6. The PR body starts with `Task: <task id>` so the site links it. If it doesn't, the contributor pastes the PR link into the task page.
+5. They click **Start in Claude**. Claude Code on the web opens with the repo and prompt filled in. They press Enter and wait. Claude Code on the web opens the PR itself, as a **draft** (the prototype saw this; there was no Create PR step to click). They come back to the site and click **Check for my PR**. Developers can instead copy the brief into any agent.
+6. The PR body starts with `Task: <task id>` so the site links it. In the prototype the PR kept that first line and all six template sections, so the paste-the-link fallback is kept but was not needed. The PR is authored by the contributor's own GitHub account, which is what "only the adopter's PR links" relies on (the account Claude is connected to must match the username they signed in with). If it doesn't link, the contributor pastes the PR link into the task page.
 7. The GitHub App runs five automatic checks.
 8. The owner reviews on the review page, then merges on GitHub, requests changes, or rejects.
 
@@ -75,15 +75,27 @@ Rules:
 
 ## Usage tiers
 
-| Tier | Typical scope | Size cap | Rough effort |
+Tasks are not only code. A task can be a bug fix, a feature, a design note, a project plan, or a whole milestone. Tiers describe how much of someone's usage the work takes, not what kind of work it is.
+
+| Tier | Typical work | Line cap (code and docs in the PR) | Rough effort |
 | --- | --- | --- | --- |
-| Small | One file, clear bug or small addition | 100 lines | A quick run |
-| Medium | Two to four files, contained feature | 300 lines | A solid chunk of one session |
-| Large | Several files, more reading needed | 500 lines | Most of one session |
+| Small | A bug, a small addition, a short doc | 300 lines (proposed) | A quick run |
+| Medium | A contained feature, a design note, a handful of files | 1,000 lines (proposed) | A solid chunk of one session |
+| Open-ended | A milestone, a project plan, a large piece of work | None | As much usage as the person is willing to put in, up to a whole week's |
 
-The owner picks the tier when posting. After each PR the contributor can note roughly how much usage it took (`usage_note`), so tiers can be calibrated later. Tiers describe the work, not a percentage of anyone's usage.
+The cap numbers are placeholders. The prototype only tested 100 and found them tiny; calibrate with `usage_note` data.
 
-The size cap counts lines added plus lines removed. It skips lockfiles and the generated files listed in repo settings. Tests count.
+The owner picks the tier when posting. After each PR the contributor can note roughly how much usage it took (`usage_note`), so tiers can be calibrated later.
+
+The size cap counts lines added plus lines removed. It skips lockfiles and the generated files listed in repo settings. Tests count. Open-ended tasks have no size cap; they are controlled with checkpoints instead (below).
+
+### Open-ended tasks: milestones with stops
+
+- The brief lists checkpoints: ordered, each with its own acceptance criteria.
+- The agent finishes one checkpoint, opens a PR for it (first line `Task: <id>`, plus `Checkpoint: <n>`), and the owner reviews it before the next one starts.
+- Each checkpoint PR is held to the usual checks except size. Scope, secrets, CI and template all apply, and the scope is the brief's allowed paths.
+- The adoption lock is renewed for 48 hours each time a checkpoint PR is opened or merged. The task closes when the owner marks it done or the last checkpoint merges.
+- Nothing large lands unreviewed: the caps used to guard against that, and the checkpoints now do.
 
 ## Brief guideline
 
@@ -94,7 +106,7 @@ Every task ships with a brief written so an agent with no prior knowledge of the
 
 ### How the brief reaches the agent
 
-- **Start in Claude:** the task page builds a link to Claude Code on the web: `https://claude.ai/code?prompt=<url-encoded prompt>&repositories=<owner>/<repo>`. Nothing is sent until the person presses Enter. The prompt stays short: the Task Brief, "read PROJECT_BRIEF.md first" (it's already in the repo), the off-limits paths from repo settings, and "open the PR with the template below, starting with `Task: <task id>`".
+- **Start in Claude:** the task page builds a link to Claude Code on the web: `https://claude.ai/code?prompt=<url-encoded prompt>&repositories=<owner>/<repo>`. Nothing is sent until the person presses Enter. The prompt stays short (the prototype's links ran about 3,200 to 3,600 characters and worked; `prompt_url` is the fallback if a longer brief breaks):  the Task Brief, "read PROJECT_BRIEF.md first" (it's already in the repo), the off-limits paths from repo settings, and "open the PR with the template below, starting with `Task: <task id>`".
 - **Copy brief:** copies the same text, plus a .md download, for any other agent.
 - There are no personal access tokens in the MVP. Those come back with the MCP server (see Later).
 
@@ -113,9 +125,10 @@ Off-limits paths live only in repo settings. The checks enforce that list, and t
 | Allowed paths | Yes | Glob patterns the PR may touch, e.g. `src/upload/**`, `tests/**`. Prefilled from the folders of the files above |
 | Current vs expected behaviour | Bugs | Include reproduction steps |
 | Acceptance criteria | Yes | Checklist of yes/no items the reviewer ticks |
-| Test command | Yes | One command that proves it is done |
+| Test command | Code tasks | One command that proves it is done. For docs or planning tasks, the repo's lint command, or "none" |
+| Checkpoints | Open-ended | Ordered list of stops, each with its own acceptance criteria. The agent opens one PR per checkpoint |
 | Constraints | Yes | e.g. no new dependencies, keep public API |
-| Size tier | Yes | Small, Medium or Large; sets the line cap |
+| Size tier | Yes | Small, Medium or Open-ended; sets the line cap (none for Open-ended) |
 | Out of scope | Optional | Related work the agent must not take on |
 | Example input and output | Optional | One concrete case |
 
@@ -148,7 +161,7 @@ Task Brief template:
 
 **Constraints:** no new dependencies; do not change the public API
 **Size tier:** Medium
-**Size cap:** 300 lines changed
+**Size cap:** 1,000 lines changed
 **Out of scope:** file-size limits (separate task)
 ```
 
@@ -167,11 +180,12 @@ A PR only reaches the owner's review page when it is small, tied to one task, an
 
 PR rules:
 - One task, one PR. Body starts with `Task: <task id>` so the site links it.
-- Stay under the tier's size cap.
+- Stay under the tier's size cap (Open-ended tasks have none; each checkpoint is its own PR).
 - Touch only the brief's allowed paths. No unrelated reformatting or renaming.
 - All CI checks pass before it shows up for review.
 - State which agent and model wrote it.
 - Branches only, no forks.
+- Draft PRs are fine: the checks run on them. The owner's first step on a draft is **Ready for review**, because GitHub won't merge a draft.
 
 Required PR template:
 
@@ -205,7 +219,7 @@ Automatic checks (one GitHub check run per linked PR; they only read the diff, t
 | Check | Fails when |
 | --- | --- |
 | Template | A required section is missing or empty |
-| Size | Lines changed exceed the tier's cap (see the counting rules under Usage tiers) |
+| Size | Lines changed exceed the tier's cap (see the counting rules under Usage tiers). Skipped for Open-ended tasks |
 | Scope | Files outside the brief's allowed paths, or any off-limits file, changed |
 | Secrets | A key, token or password pattern appears in the diff (gitleaks) |
 | CI | The repo's own tests or linter fail. The site's own check run is ignored here |
@@ -214,7 +228,7 @@ A repo without CI can't be connected at all.
 
 ### Review page
 
-One page per PR: acceptance criteria next to the contributor's evidence, check results, scope warning if any, diff size. Three actions:
+One page per PR: a plain-language "what to check" taken from the PR's Summary and Risks sections, acceptance criteria next to the contributor's evidence, check results, scope warning if any, diff size. A draft shows a "mark Ready for review on GitHub first" note. Three actions:
 
 - **Open on GitHub to merge:** merging happens on GitHub. When GitHub reports the merge, the task closes and the contributor gets a "helped ship" entry.
 - **Request changes:** the App posts a structured GitHub comment (criterion, problem, expected fix) that the contributor's agent can read and act on.
@@ -225,7 +239,7 @@ One page per PR: acceptance criteria next to the contributor's evidence, check r
 
 Free GitHub orgs can't protect branches on private repos, so anyone with push access could merge their own PR. Until the company upgrades:
 - The site watches every merge and every push to the default branch.
-- If a PR is merged by anyone other than the task owner or a repo admin, or the default branch changes without an owner-merged PR, the admin page shows an alert, the task page shows a warning, and an `alerts` row and an `audit_log` row are written.
+- If a PR is merged by anyone other than the task owner or a repo admin (admin status comes from GitHub's collaborator permission API, so legitimate merges don't set off the alert), or the default branch changes without an owner-merged PR, the admin page shows an alert, the task page shows a warning, and an `alerts` row and an `audit_log` row are written.
 
 ## Architecture and stack
 
@@ -356,7 +370,7 @@ Hitting them is the case for the pitch list.
 | No branch protection on a free GitHub org | Unreviewed-merge alert, a guided walkthrough that never shows merging, low-stakes repos, GitHub Team on the pitch list |
 | The smee relay exposes webhook contents | Unguessable channel URL, low-stakes repos, direct webhooks on the pitch list |
 | Low-quality PRs waste reviewers' time | Tier caps, CI required, PR template, failing PRs kept off the review page, one fix round for guided users, admins can block |
-| Guided users can't judge the code | Checks gate every PR, the owner reviews, and rejections are tracked by profile |
+| Guided users can't judge the code, and the owner may not be able to either (the prototype review took 30 seconds on code the reviewer couldn't read) | Checks gate every PR, the owner reviews, the review page leads with a plain-language "what to check", and rejections are tracked by profile |
 | Secrets leaking through briefs or PRs | Secret scanning on both; `.env.example` instead of real values |
 | Prompt injection in a brief aimed at contributors' agents | Only AI-team members post; the brief checker flags commands and links outside the repo |
 | Two people adopting the same task | 48-hour adoption lock |
