@@ -30,6 +30,9 @@ Working name: Pitch In (check for clashes before any public version). The folder
 | Rewards | None. A "helped ship" list on profiles and a monthly report for the admin |
 | Agents | Any agent that can work in a repo. "Start in Claude" opens Claude Code on the web with the task filled in; "Copy brief" works for anything else |
 | Platform | GitHub.com, through a GitHub App each company registers itself. The site never hosts code |
+| Planning | The owner's own agent splits the project into milestones and task briefs ("Plan in Claude"), and the owner pastes the result into the site |
+| Review | The owner reviews every PR together with their own agent. Nobody else reviews |
+| Owner's usage | Kept as low as possible: the site's free checks first, then the contributor's agent, and the owner's agent only for planning and the final call |
 | Merging | Always on GitHub, never from the site |
 | Permissions | Taken from GitHub, plus a main admin and a block list |
 | Running it | Docker Compose (web app, worker, Postgres). The company trial runs on a free machine picked with IT |
@@ -57,13 +60,23 @@ Each person also sets **"How much do you want to take on?"** on their profile (s
 
 1. The company does the one-time [setup checklist](#company-setup-checklist).
 2. A coworker connects their project's repo (it must have CI) and commits a `PROJECT_BRIEF.md`. A repo without one connects with a warning, so writing it can be the repo's first task.
-3. The owner posts a single task, or a project with ordered milestones split into tasks. Each task has a Task Brief, an estimate and allowed paths. The brief checker runs.
+3. The owner plans the project with their own agent (**Plan in Claude**), pastes the result into the site, and the brief checker runs on every task. Single tasks and small changes go through the task form. Each task has a Task Brief, an estimate and allowed paths. (Plan in Claude arrives in Milestone 4; until then owners post through the forms.)
 4. A coworker picks how much they want to take on. The board shows work that fits, and they adopt one task or a whole milestone (48-hour lock).
-5. They click **Start in Claude**. Claude Code on the web opens with the repo and prompt filled in. They press Enter and wait. Claude Code on the web opens the PR itself, as a **draft** (the prototype saw this; there was no Create PR step to click). They come back to the site and click **Check for my PR**. Developers can instead copy the brief into any agent.
+5. They click **Start in Claude**. Claude Code on the web opens with the repo and prompt filled in. They press Enter and wait. Their agent builds the work, reviews its own diff against the brief, and opens the PR in the [token-saving format](#review-friendly-prs). If it's blocked, it [asks the owner on the draft PR](#questions-between-agents). Claude Code on the web opens the PR itself, as a **draft** (the prototype saw this; there was no Create PR step to click). They come back to the site and click **Check for my PR**. Developers can instead copy the brief into any agent.
 6. The PR body starts with `Task: <task id>` so the site links it. In the prototype the PR kept that first line and all six template sections, so the paste-the-link fallback is kept but was not needed. The PR is authored by the contributor's own GitHub account, which is what "only the adopter's PR links" relies on (the account Claude is connected to must match the username they signed in with). If it doesn't link, the contributor pastes the PR link into the task page.
-7. The GitHub App runs five automatic checks.
-8. The owner reviews on the review page, then merges on GitHub, requests changes, or rejects.
+7. The GitHub App runs seven automatic checks: plain code, no AI. A PR that fails any of them goes back to the contributor, and the owner never sees it.
+8. The owner reviews with their own agent (**Review in Claude**, from a prepared review packet), then accepts and merges on GitHub, rejects with adjustments, or rejects outright.
 9. On a milestone, the contributor moves on to its next task, or hands back any time none of their PRs is open. Whatever is left goes back on the board for someone else to continue.
+
+## Keeping the owner's usage low
+
+The owner's Claude usage is the scarcest thing in the loop, so every step runs at the cheapest layer that can do it:
+
+1. **The site's checks:** plain code with fixed rules, no AI and no tokens. They catch everything that can be checked mechanically, before the owner sees anything.
+2. **The contributor's agent:** builds the work, reviews its own diff, and writes the PR so the owner's agent can verify it by following pointers instead of searching.
+3. **The owner's agent:** plans each project once, then makes the final call on each PR from a review packet the site prepares, never from the whole repo.
+
+The owner always reviews with their own agent; nobody else reviews. Re-reviews read only what changed, and agents ask the owner questions only when a wrong guess would waste the run.
 
 ## Roles and permissions
 
@@ -132,9 +145,43 @@ Every task ships with a brief written so an agent with no prior knowledge of the
 - **Task Brief:** written on the site, per task.
 - **Project and milestone goals:** written on the site when posting a project, added to every task's prompt.
 
+### Planning a project with the owner's agent (Milestone 4)
+
+- **Plan in Claude:** the "Post a project" page has a link, built like Start in Claude, plus a copy-paste version. It opens the owner's own Claude Code session on the repo with a fixed planning prompt. The prompt is the same for every project, so the link stays well inside the tested length; the owner describes the goal in the session.
+- The agent reads `PROJECT_BRIEF.md` and the repo, then splits the goal into milestones and tasks by these rules: one task is one PR and one session; each estimate is within the repo's largest; files to look at are real paths; briefs stay under 500 words; tasks are in dependency order; each milestone ends at something usable.
+- It answers with one JSON block in the import format: the project's title and goal, each milestone's title and goal, and every Task Brief field for each task.
+- **Import:** the owner pastes the block into the site. The site parses it, runs the brief checker on every task (free), and shows one preview page with all the flags. The owner fixes them (by hand or by asking their agent), then posts the whole project at once. Tasks stay editable until someone takes them on.
+- JSON rather than Markdown because it parses exactly; the preview page shows it to the owner as readable briefs.
+
+```json
+{
+  "project": { "title": "Text utilities v2", "goal": "Safer inputs and two new helpers" },
+  "milestones": [
+    {
+      "title": "Safer inputs",
+      "goal": "Every helper rejects bad arguments with a clear error",
+      "tasks": [
+        {
+          "title": "Make slugify reject non-string input",
+          "kind": "code",
+          "estimate": "small",
+          "goal": "slugify throws a TypeError for anything that isn't a string",
+          "files": ["src/slugify.js", "tests/slugify.test.js"],
+          "allowedPaths": ["src/slugify.js", "tests/**"],
+          "acceptance": ["slugify(null) throws a TypeError", "A new test covers non-string input"],
+          "testCommand": "npm test",
+          "constraints": "No new dependencies"
+        }
+      ]
+    }
+  ]
+}
+```
+
 ### How the brief reaches the agent
 
 - **Start in Claude:** the task page builds a link to Claude Code on the web: `https://claude.ai/code?prompt=<url-encoded prompt>&repositories=<owner>/<repo>`. Nothing is sent until the person presses Enter. The prompt stays short (the prototype's links ran about 3,200 to 3,600 characters and worked; `prompt_url` is the fallback if a longer brief breaks): the project and milestone goals if any, the Task Brief, "read PROJECT_BRIEF.md first" (it's already in the repo), the off-limits paths from repo settings, and "open the PR with the template below, starting with `Task: <task id>`".
+- The prompt also sets the contributor's side of the [owner's usage rules](#keeping-the-owners-usage-low): before finishing, the agent re-reads its own diff against every acceptance criterion, runs the test command, and fills in the PR template with evidence pointers. When something is unclear, it writes down an assumption and carries on, and asks the owner only when a wrong guess would waste the run.
 - **Copy brief:** copies the same text, plus a .md download, for any other agent.
 - There are no personal access tokens in the MVP. Those come back with the MCP server (see Later).
 
@@ -224,7 +271,8 @@ Task Brief template (research):
 - Adopting locks a task, or a milestone's open tasks, for **48 hours**. The lock holds while a linked PR is open and is renewed each time one of the adopter's PRs is opened or merged. The owner or an admin can release it early.
 - Lock expiry is computed when the task is read (`expires_at < now()` means it's free again), so there is no expiry job.
 - Only PRs authored by the current adopter get linked. Anyone else's PR gets a failing check that says "adopt this task first".
-- After "Request changes", the adopter has **72 hours** to push a fix. Otherwise the PR is closed and the task reopens.
+- After "Reject with adjustments" (request changes), the adopter has **72 hours** to push a fix. Otherwise the PR is closed and the task reopens.
+- A question waiting on the owner doesn't put the lock at risk: the open draft PR already holds it.
 - The adopter can hand back a task or a milestone any time none of their PRs is open; the remaining tasks reopen.
 
 Task statuses: `open` -> `adopted` -> `in_review` -> `changes_requested` -> `in_review` -> `merged`. A task goes back to `open` on reject, lock expiry, a missed fix window, or a hand-back. It becomes `closed` when the owner withdraws it.
@@ -233,64 +281,94 @@ Milestone statuses: `open` -> `in_progress` (any task adopted or merged) -> `don
 
 ## Review-friendly PRs
 
-A PR only reaches the owner's review page when it is small, tied to one task, and passes the checks. PRs with failing checks show on the task page for the contributor, not on the review page.
+A PR only reaches the owner when it is small, tied to one task, and passes every check. PRs with failing checks go back to the contributor on the task page; the owner never spends usage on them.
 
 PR rules:
 - One task, one PR. Body starts with `Task: <task id>` so the site links it. A milestone is several tasks, so several PRs.
 - Stay under the task's size cap.
 - Touch only the brief's allowed paths. No unrelated reformatting or renaming.
 - All CI checks pass before it shows up for review.
+- Self-review first: the agent re-reads its own diff against every acceptance criterion and runs the test command before it finishes.
+- Leave out what the site can work out for free: the files changed, line counts and CI results come from GitHub.
 - State which agent and model wrote it.
 - Branches only, no forks.
 - Draft PRs are fine: the checks run on them. The owner's first step on a draft is **Ready for review**, because GitHub won't merge a draft.
 
-Required PR template:
+Required PR template. Every acceptance criterion from the brief, word for word, ticked, with a pointer to where it's met, so the owner's agent checks lines instead of searching:
 
 ```markdown
-Task: <task id>
+Task: PI-12
 
 ## Summary
-- <what changed, three bullets at most>
-
-## Files changed
-- src/upload.py: reject empty files in validate_file()
-- tests/test_upload.py: add empty-file test
+- slugify throws a TypeError for anything that isn't a string
 
 ## Acceptance criteria
-- [x] Empty files are rejected with a 400 error
-- [x] A new test covers the empty-file case
-- [x] All existing tests pass
+- [x] slugify(null) throws a TypeError -> src/slugify.js:8
+- [x] A new test covers non-string input -> tests/slugify.test.js:41
+- [x] All existing tests pass -> CI
+
+## Where to look
+- src/slugify.js:6-10: the new type check; everything else is tests
 
 ## How it was tested
-`pytest tests/test_upload.py` -> 14 passed
+`npm test` -> 12 passed, 0 failed
 
-## Risks or notes
-<anything the reviewer should look at closely>
+## Not done or assumed
+- Numbers are rejected, not converted (the brief didn't say which)
 
 ## Agent
 <agent and model used>
 ```
 
-Automatic checks (one GitHub check run per linked PR; they only read the diff, the site never runs contributor code):
+Automatic checks, posted as one GitHub check run per linked PR. They are plain code with fixed rules, no AI and no tokens: the worker reads the PR body, the changed files and the CI results through the GitHub API, and the same PR always gets the same result. They prove the PR's shape, not whether the code is right; that judgement is the owner's agent's.
 
 | Check | Fails when |
 | --- | --- |
-| Template | A required section is missing or empty |
+| Template | The first line isn't `Task: <task id>`, or a required section is missing or empty |
 | Size | Lines changed exceed the task's cap (see the counting rules under Sizing) |
 | Scope | Files outside the brief's allowed paths, or any off-limits file, changed |
-| Secrets | A key, token or password pattern appears in the diff (gitleaks) |
+| Secrets | A key, token or password pattern appears in the diff (gitleaks, a rules-based scanner) |
 | CI | The repo's own checks fail (tests for code, a lint or link check for docs and research). The site's own check run is ignored here |
+| Criteria | The PR doesn't list every acceptance criterion from the brief, word for word, all ticked |
+| Evidence | A criterion's pointer (`file:line`) isn't inside a changed part of the diff. "CI" is a valid pointer for "all tests pass" |
+
+A contributor sees the result as one check run, for example:
+
+```
+Pitch In checks: 6 passed, 1 failed
+✓ Template   all sections filled
+✓ Size       142 of 300 lines
+✗ Scope      README.md is outside the allowed paths
+✓ Secrets    nothing found
+✓ CI         test: success
+✓ Criteria   3 of 3 listed and ticked
+✓ Evidence   3 of 3 pointers found in the diff
+```
 
 A repo without CI can't be connected at all. Docs and research repos need at least a Markdown lint or link-check workflow; the connect screen offers a copy-paste starter workflow for them.
 
-### Review page
+### Review with the owner's agent
 
-One page per PR: a plain-language "what to check" taken from the PR's Summary and Risks sections, acceptance criteria next to the contributor's evidence, check results, scope warning if any, diff size. A draft shows a "mark Ready for review on GitHub first" note. For non-code tasks, the page links straight to the rendered output file on GitHub. Three actions:
+The owner reviews every PR with their own agent. The site prepares a **review packet** for free from the PR and the diff: the Summary, each acceptance criterion with its evidence, Where to look, Not done or assumed, the check results, and only the changed lines around each pointer. For non-code tasks it links straight to the rendered output file on GitHub. A draft shows a "mark Ready for review on GitHub first" note.
 
-- **Open on GitHub to merge:** merging happens on GitHub. When GitHub reports the merge, the task closes, the milestone moves on, and the contributor gets a "helped ship" entry.
-- **Request changes:** the App posts a structured GitHub comment (criterion, problem, expected fix) that the contributor's agent can read and act on.
-  - **Guided users get one round of fixes.** They get a **Continue in Claude** button with the PR link and the reviewer's comments filled in. If the second try still isn't right, the PR closes and the task goes back on the board, marked for developers. Unconfirmed: whether a new web session can pick up the existing PR's branch. If it can't, the fix arrives as a new PR that replaces the old one.
-- **Reject:** the App closes the PR with a reason and the task reopens for others.
+**Review in Claude** opens the owner's own session with the PR link, the brief's acceptance criteria and the packet filled in, plus reading rules that keep it cheap: start from the packet; open only the PR's own files, and only where a pointer needs context; never browse the rest of the repo; never re-run tests or re-check what the checks already proved (size, scope, secrets, template, CI). How the packet reaches the agent when it's longer than a link holds (copy and .md download as with Copy brief, or the check run's summary on GitHub) is settled in Milestone 3.
+
+The owner's agent answers with one of three outcomes, which the owner carries out:
+
+- **Accept:** the owner merges on GitHub. When GitHub reports the merge, the task closes, the milestone moves on, and the contributor gets a "helped ship" entry.
+- **Reject with adjustments** (request changes): the App posts a structured GitHub comment (criterion, problem, expected fix), the same format the contributor's agent reads. The contributor's agent fixes the work and adds a short fix report that maps each item to new evidence. The re-review packet shows only what changed since the last review (GitHub's compare API) plus the fix report.
+  - **Guided users get one round of fixes.** They get a **Continue in Claude** button with the PR link and the owner's comments filled in. If the second try still isn't right, the PR closes and the task goes back on the board, marked for developers. Unconfirmed: whether a new web session can pick up the existing PR's branch. If it can't, the fix arrives as a new PR that replaces the old one.
+- **Reject outright:** the App closes the PR with a reason and the task reopens for others. For work that isn't worth fixing.
+
+### Questions between agents
+
+Agents can't talk live: each one runs in its own person's session, and the site never runs one. They talk asynchronously on the draft PR that Claude Code opens anyway:
+
+- **Ask rarely.** By default the contributor's agent writes down an assumption under "Not done or assumed" and carries on; the owner corrects it at review if needed. It asks and waits only when a wrong guess would waste the whole run.
+- **Ask on the PR.** A PR comment starting `Question for owner:`, with one question, the options the agent sees, and the one it will take by default.
+- **The site flags it.** It picks the comment up from the `issue_comment` webhook, marks the task "waiting on owner" on the task page and the owner's pages, and offers **Answer in Claude** (the question and the brief filled in). The owner can also just reply on GitHub.
+- **Answer on the PR.** The owner's reply goes on the PR, and the contributor's Continue in Claude picks it up.
+- The open draft PR keeps the 48-hour lock alive while they wait. A direct agent-to-site channel comes later, with the MCP server.
 
 ### Unreviewed-merge alert
 
@@ -319,7 +397,7 @@ Hosting:
 
 **smee trade-off:** anyone with the channel URL can see what passes through it: PR titles and descriptions, file names and commit messages, but not the code itself. smee doesn't keep events for a relay that's offline, so webhooks sent while the machine is off are missed (GitHub can redeliver them). That's acceptable for a trial on low-stakes repos. Direct webhooks on a real host are on the pitch list.
 
-GitHub App permissions: read contents, metadata, commit statuses and organization members; read and write pull requests (comments, closing); write checks. Listen for `installation`, `pull_request`, `check_suite` and `push` events.
+GitHub App permissions: read contents, metadata, commit statuses and organization members; read and write pull requests (comments, closing); write checks. Listen for `installation`, `pull_request`, `check_suite`, `push` and `issue_comment` events (`issue_comment` for agents' questions, from Milestone 3). An App registered before Milestone 3 needs `issue_comment` switched on in its GitHub settings, a one-time step for an org owner.
 
 ```
 Coworkers -> Web app (Next.js) <-> PostgreSQL
@@ -341,7 +419,8 @@ Milestone 1 created users, repos, tasks, adoptions, submissions, reviews, jobs, 
 | milestones (new) | project_id, position, title, goal, status (open, in_progress, done) |
 | tasks | repo_id, project_id and milestone_id (new, optional), position (new), owner_id, title, kind (code or other; new), brief (the structured fields; new), brief_md, size_tier (small, medium, large), allowed_paths, status |
 | adoptions | task_id, milestone_id (new, set for whole-milestone adoptions), user_id, expires_at, status (active, released, expired, completed) |
-| submissions | task_id, pr_number, head_sha, author_id, check_results, usage_note, fix_round, status |
+| submissions | task_id, pr_number, head_sha, author_id, check_results, usage_note, fix_round, last_reviewed_sha (planned, Milestone 3: re-reviews read only what changed), status |
+| questions (planned, Milestone 3) | submission_id, github_comment_id, asked_at, answered_at |
 | reviews | submission_id, reviewer_id, decision, comments |
 | jobs | type, payload, status, attempts, run_after, dedupe_key |
 | alerts | repo_id, kind (unreviewed_merge or direct_push), details, created_at, resolved_at |
@@ -384,19 +463,27 @@ Work through these in order. Finish each one (tests passing) before starting the
 
 ### Milestone 3: Checks and review
 - Link PRs from the `Task: <id>` line, with the paste-the-link fallback; only the adopter's PRs link. Drafts link and get checked.
-- The five checks posted as one GitHub check run.
-- Review page (with "what to check" and a link to rendered non-code output); request changes and reject as GitHub comments; the task closes and the milestone moves on when GitHub reports the merge; milestone adoptions renew their lock on each PR.
+- The seven checks (template, size, scope, secrets, CI, criteria, evidence) as plain code, posted as one GitHub check run; gitleaks joins the image.
+- The token-saving PR template and the self-review step in the Start in Claude prompt.
+- The review packet and Review in Claude for the owner's agent: accept (merge on GitHub), reject with adjustments, or reject outright, as GitHub comments. Re-reviews read only what changed since the last review, plus the contributor's fix report.
+- Questions between agents on the draft PR, with "waiting on owner" and Answer in Claude.
+- The task closes and the milestone moves on when GitHub reports the merge; milestone adoptions renew their lock on each PR.
 - The 72-hour fix window; one fix round with "Continue in Claude" for guided users.
 - Unreviewed-merge alert, using GitHub's collaborator permission API to recognise repo admins.
-- Done when: an oversized PR is flagged, a clean one reaches the review page, merging on GitHub closes the task and moves its milestone to the next task, and a merge by the wrong person sets off the alert.
+- Done when: an oversized PR and a PR with a dangling evidence pointer are flagged; a clean one reaches the owner, whose agent reviews it through Review in Claude; a reject-with-adjustments round re-reviews only the changed lines; a question on a draft PR shows as waiting on the owner; merging on GitHub closes the task and moves its milestone to the next task; and a merge by the wrong person sets off the alert.
 
-### Milestone 4: Demo-org trial
+### Milestone 4: Planning with the owner's agent
+- Plan in Claude on the "Post a project" page: the fixed planning prompt for the owner's own session (and a copy-paste version), with the splitting rules and the import format.
+- Import: paste the agent's JSON; the site parses it, runs the brief checker on every task, shows one preview with all the flags, and posts the project, its milestones and tasks together.
+- Done when: an owner's agent turns a goal into a project with at least two milestones in the import format; the import flags a task whose files don't exist in the repo; and after the fix, the whole project posts in one go.
+
+### Milestone 5: Demo-org trial
 - A free GitHub org I own, with public sample repos of different kinds (a small website, an automation script, a research repo) and sample projects and tasks, clearly labeled as sample data. Public repos get branch protection for free.
 - Individual testers use it as both Developer and Guided users.
 - "Helped ship" list on profiles; monthly admin report (work done for others, by estimate and kind, with contributors' usage notes).
 - Done when: at least one Developer PR and one Guided PR are merged end to end, at least one of them non-code, and one milestone is finished by two different people.
 
-### Milestone 5: Company trial
+### Milestone 6: Company trial
 - The setup checklist page, then the company's free org with two or three repos.
 - Run for four weeks against the success targets below.
 
@@ -419,7 +506,7 @@ Hitting them is the case for the pitch list.
 ## Later (not in the MVP)
 
 - Submit a link for work that doesn't live in GitHub (Google Docs, Figma, hosted demos), marked done by the owner, with no automatic checks.
-- MCP server so agents can adopt and submit directly (brings back per-user access tokens).
+- MCP server so agents can adopt, submit, and ask or answer questions through the site directly (brings back per-user access tokens).
 - Weekly reminder of open work (Slack or email).
 - Estimate and cap calibration from logged `usage_note` data.
 - A "suggest an idea" box for people without write access to a repo.
@@ -434,8 +521,10 @@ Hitting them is the case for the pitch list.
 | The company moves to pay-per-use Enterprise billing | There'd be no leftover usage: a guided user's run would cost the same as the owner's. Revisit the pitch if that happens |
 | No branch protection on a free GitHub org | Unreviewed-merge alert, a guided walkthrough that never shows merging, low-stakes repos, GitHub Team on the pitch list |
 | The smee relay exposes webhook contents and drops events while offline | Unguessable channel URL, low-stakes repos, redelivery from GitHub, direct webhooks on the pitch list |
-| Low-quality PRs waste reviewers' time | Per-task caps, big work split into milestone tasks, CI required, PR template, failing PRs kept off the review page, one fix round for guided users, admins can block |
-| Guided users can't judge the result, and the owner may not be able to either (the prototype review took 30 seconds on code the reviewer couldn't read) | Checks gate every PR, the owner reviews, the review page leads with a plain-language "what to check", and rejections are tracked by profile |
+| Low-quality PRs waste owners' time and usage | Per-task caps, big work split into milestone tasks, CI required, the criteria and evidence checks, failing PRs never reach the owner, one fix round for guided users, admins can block |
+| Planning and reviews use up the owner's Claude usage | Free checks first; contributors self-review and write the pointer-based PR format; the owner's agent reads a review packet, not the repo; re-reviews read only what changed; agents ask questions only when a wrong guess would waste the run |
+| A contributor's agent writes evidence pointers that look right but aren't | The evidence check proves each pointer lands in the diff; the owner's agent checks what it points at |
+| Guided users can't judge the result, and the owner may not be able to either (the prototype review took 30 seconds on code the reviewer couldn't read) | Checks gate every PR, the owner reviews every PR with their own agent from a review packet, and rejections are tracked by profile |
 | Non-code work (research, design) is hard to check automatically | Yes/no acceptance criteria, an Output field naming the file and format, a lint or link-check CI, "cite every source" constraints, and the owner reviews the rendered output |
 | Owners post work too big for one run | Estimates with caps, the 500-word brief limit, and milestones to split big work |
 | Secrets leaking through briefs or PRs | Secret scanning on both; `.env.example` instead of real values |
@@ -457,12 +546,13 @@ Hitting them is the case for the pitch list.
 - Keep it minimal: one Next.js app, one worker, Postgres, all in `docker compose`. No paid services, no hosted dependencies, no multi-company support, no deployment config.
 - Never run contributor code on the site's machine. Checks only read diffs through the GitHub API.
 - Never store Claude tokens and never start agent runs. The site only builds links that a person opens.
-- Write tests first for the brief checker, the five PR checks, the adoption lock (with a fake clock), milestone adoption and hand-back, the "work that fits" filter, the permission rules, the PR linking rules and the unreviewed-merge alert. Those are the core of the product.
+- Write tests first for the brief checker, the seven PR checks, the review packet, plan import, the adoption lock (with a fake clock), milestone adoption and hand-back, the "work that fits" filter, the permission rules, the PR linking rules and the unreviewed-merge alert. Those are the core of the product.
+- Keep the owner's usage low: anything the site can work out for free (files changed, line counts, CI results, the diff around a pointer) never goes in a prompt or a PR body.
 - Never commit secrets. Provide `.env.example` with fake values for the GitHub App credentials, OAuth secrets, database URL, smee URL, `MAIN_ADMIN_GITHUB_LOGIN` and the team names.
 
 ## Prompt for the next milestone
 
-> Read plan.md. Start Milestone 3 only. Before writing code, interview me on anything the plan leaves open (with a recommendation for each), then show me a short plan. Link PRs to tasks from the `Task: <id>` first line, with the paste-the-link fallback and "Check for my PR" (only the current adopter's PRs link; drafts link and get checked). Add gitleaks to the image and run the five checks in the worker as one GitHub check run. Build the review page with "what to check", request changes and reject as GitHub comments, the 72-hour fix window and one fix round with "Continue in Claude" for guided users. Close the task and move the milestone on when GitHub reports the merge, renew milestone locks on each PR, and add the unreviewed-merge alert using GitHub's collaborator permission API. Write tests first for the five checks, PR linking and the alert. Stop when Milestone 3's "Done when" is met and summarize what you built.
+> Read plan.md. Start Milestone 3 only. Before writing code, interview me on anything the plan leaves open (with a recommendation for each), then show me a short plan. Link PRs to tasks from the `Task: <id>` first line, with the paste-the-link fallback and "Check for my PR" (only the current adopter's PRs link; drafts link and get checked). Add gitleaks to the image and run the seven checks (plain code, no AI) in the worker as one GitHub check run. Put the token-saving PR template and the self-review step in the Start in Claude prompt. Build the review packet and Review in Claude for the owner's agent, with accept, reject with adjustments and reject outright as GitHub comments, and re-reviews that read only what changed. Add questions between agents on the draft PR. Close the task and move the milestone on when GitHub reports the merge, renew milestone locks on each PR, and add the 72-hour fix window, one fix round for guided users, and the unreviewed-merge alert using GitHub's collaborator permission API. Write tests first for the seven checks, PR linking, the review packet and the alert. Stop when Milestone 3's "Done when" is met and summarize what you built.
 
 ## Sources
 
@@ -481,6 +571,6 @@ Similar projects:
 - opub: https://dev.to/goodroot/introducing-open-public-opub-2hpf
 - CleverCrow: https://frontpage-app.vercel.app/news/48621645
 
-Older formatted plan (out of date since this rewrite): https://claude.ai/artifact/KsJQZQF2ksRtUbVzaYJACB
+Formatted copy of this plan (updated 2026-11-23, after Milestone 2): https://claude.ai/artifact/KsJQZQF2ksRtUbVzaYJACB
 
 The pre-rewrite version of this plan is kept locally as `plan-v1.md` (not in git).

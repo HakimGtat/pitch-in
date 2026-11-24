@@ -20,7 +20,7 @@ Milestones 1 (foundation) and 2 (projects, tasks and briefs) are built:
 - Adopting a task or a whole milestone with a 48-hour lock computed on read, handing back, and releasing
 - Start in Claude (a pre-filled Claude Code on the web link), Copy brief, a `.md` download, and the Guided walkthrough
 
-PR linking, the five checks, the review page and the unreviewed-merge alert come in Milestone 3.
+PR linking, the seven checks, review with the owner's agent, questions between agents and the unreviewed-merge alert come in Milestone 3; planning a project with the owner's agent comes in Milestone 4.
 
 ## Running it
 

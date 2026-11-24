@@ -45,17 +45,19 @@ Build one milestone at a time, in the order `plan.md` lists them, and stop when 
 
 ## Architecture (planned)
 
-One Docker image (Next.js + TypeScript web app, a worker, and the gitleaks binary) plus Postgres, run with `docker compose`.
+One Docker image (Next.js + TypeScript web app, a worker, the smee relay, and the gitleaks binary from Milestone 3) plus Postgres, run with `docker compose`.
 
-- **Web app:** board (projects, milestones and tasks, filtered by how much the person wants to take on), task and project forms with the brief checker, review page, admin screen, GitHub OAuth sign-in, and the GitHub App webhook receiver.
-- **Worker:** polls a `jobs` table in Postgres (no extra queue service), fetches PR diffs, runs the five checks (template, size, scope, secrets via gitleaks, CI status), and posts one GitHub check run per linked PR.
+- **Web app:** board (projects, milestones and tasks, filtered by how much the person wants to take on), task and project forms with the brief checker, plan import (Milestone 4), the review packet with Review in Claude, admin screen, GitHub OAuth sign-in, and the GitHub App webhook receiver.
+- **Worker:** polls a `jobs` table in Postgres (no extra queue service), fetches PR diffs, runs the seven checks (template, size, scope, secrets via gitleaks, CI status, criteria, evidence) as plain code with no AI, and posts one GitHub check run per linked PR.
 - **GitHub App:** each company registers its own through GitHub's manifest flow. Webhooks reach a machine with no public address through a smee.io relay, in development and during the trial.
 
 Behaviour that spans several parts of the code:
 
-- **Adoption lock** (48 hours) is computed on read from `expires_at`. There is no expiry job. Adopting a whole milestone locks its open tasks; the lock renews on each of the adopter's PRs, and they can hand back after any merged PR.
+- **Adoption lock** (48 hours) is computed on read from `expires_at`. There is no expiry job. Adopting a whole milestone locks its open tasks; the lock renews on each of the adopter's PRs, and they can hand back any time none of their PRs is open.
 - **PR linking:** a PR links to a task through a `Task: <id>` first line in its body, or through a link the contributor pastes. Only the current adopter's PR links; anyone else's gets a failing check.
 - **Unreviewed-merge alert:** free GitHub orgs can't protect branches on private repos, so the site flags any merge not done by the task owner or a repo admin, and any push to the default branch that didn't come through an owner-merged PR.
 - **Repos without CI can't be connected.** The CI check ignores the site's own check run.
+- **Owner's usage comes first:** work runs at the cheapest layer that can do it (the site's free checks, then the contributor's agent, then the owner's agent on a prepared review packet). The owner reviews every PR with their own agent; nobody else reviews. Anything the site can work out for free never goes in a prompt or a PR body.
+- **Questions between agents** go through PR comments starting `Question for owner:` on the draft PR (`issue_comment` webhook); agents never talk live.
 
-Write tests first for the core rules: the brief checker, the five PR checks, the adoption lock (with an injectable clock), milestone adoption and hand-back, the "work that fits" filter, the permission rules, PR linking and the unreviewed-merge alert.
+Write tests first for the core rules: the brief checker, the seven PR checks, the review packet, plan import, the adoption lock (with an injectable clock), milestone adoption and hand-back, the "work that fits" filter, the permission rules, PR linking and the unreviewed-merge alert.
