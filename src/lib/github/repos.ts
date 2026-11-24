@@ -70,6 +70,8 @@ export interface RepoGitHub {
   /** Posts a check run as the Pitch In App. Returns its id. */
   createCheckRun(fullName: string, name: string, run: CheckRunInput): Promise<number>;
   updateCheckRun(fullName: string, id: number, run: CheckRunInput): Promise<void>;
+  /** Comments on a PR as the Pitch In App, then closes it without merging. */
+  closePullRequest(fullName: string, number: number, comment: string): Promise<void>;
 }
 
 export const PROJECT_BRIEF_PATH = "PROJECT_BRIEF.md";

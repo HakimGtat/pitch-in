@@ -15,6 +15,8 @@ export function fakeGitHub() {
     checkRuns: new Map<string, CheckRun[]>(),
     statuses: new Map<string, { context: string; state: string }[]>(),
     posted: [] as PostedCheckRun[],
+    comments: [] as { fullName: string; number: number; body: string }[],
+    closed: [] as { fullName: string; number: number }[],
   };
   let nextCheckRunId = 1000;
   const prKey = (fullName: string, n: number) => `${fullName}#${n}`;
@@ -60,6 +62,12 @@ export function fakeGitHub() {
         }
       }
       throw new Error(`No check run ${id}`);
+    },
+    closePullRequest: async (fullName, n, comment) => {
+      world.comments.push({ fullName, number: n, body: comment });
+      const pr = world.pulls.get(prKey(fullName, n));
+      if (pr) pr.state = "closed";
+      world.closed.push({ fullName, number: n });
     },
   };
 

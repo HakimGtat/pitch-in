@@ -12,6 +12,7 @@ import { createRepoGitHub } from "@/lib/github/app";
 import { splitList } from "@/lib/glob";
 import { linkPastedPr } from "@/lib/pr-link";
 import { connectRepo, parseRepoSettings, refreshRepo, removeRepo, updateRepoSettings } from "@/lib/repos";
+import { reopenTask } from "@/lib/review";
 import { fixRequest, previewFlagLines, type ImportPreview } from "@/lib/plan-import";
 import { parseTakeOn } from "@/lib/sizing";
 import {
@@ -222,6 +223,21 @@ export async function linkPrAction(formData: FormData) {
   await change(`/tasks/${taskId}`, async () => {
     const { prNumber } = await linkPastedPr(getDb(), user.id, taskId, String(formData.get("prUrl") ?? ""));
     return `PR #${prNumber} is linked to this task.`;
+  });
+}
+
+export async function reopenAction(formData: FormData) {
+  const user = await requireUser();
+  const taskId = num(formData, "taskId");
+  await change(`/tasks/${taskId}`, async () => {
+    const { reopened, closedPrs } = await reopenTask(getDb(), gh(), user.id, taskId, {
+      reason: String(formData.get("reason") ?? ""),
+      developersOnly: formData.get("developersOnly") === "on",
+    });
+    const prs = closedPrs.length ? ` PR ${closedPrs.map((n) => `#${n}`).join(", ")} closed with your reason.` : "";
+    return reopened.length > 1
+      ? `Reopened. ${reopened.length} tasks are back on the board, with your reason in this one's brief.${prs}`
+      : `Reopened. It's back on the board with your reason in its brief.${prs}`;
   });
 }
 

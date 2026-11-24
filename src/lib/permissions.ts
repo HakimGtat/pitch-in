@@ -115,6 +115,17 @@ export function canManageOwnWork(
   return allow;
 }
 
+/**
+ * Reopening a task whose PR isn't worth fixing: the task owner or an admin,
+ * with write access to the repo fresh from GitHub (the App closes the PR).
+ */
+export function canReopen(actor: Actor, task: { ownerId: number }, access: RepoAccess): Decision {
+  if (actor.blocked) return deny("Blocked people can't reopen work.");
+  if (actor.id !== task.ownerId && !isAdmin(actor)) return deny("Only the task owner or an admin can reopen a task.");
+  if (!hasWriteAccess(access)) return deny("Reopening needs write access to this repo on GitHub.");
+  return allow;
+}
+
 /** Closing a task or project, and releasing someone's adoption early. */
 export function canCloseOrRelease(actor: Actor, work: { ownerId: number }): Decision {
   if (actor.blocked) return deny("Blocked people can't change work.");

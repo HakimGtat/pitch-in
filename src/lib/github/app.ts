@@ -235,6 +235,20 @@ export function createRepoGitHub(config: Config): RepoGitHub {
         output: { title: run.title, summary: run.summary },
       });
     },
+
+    async closePullRequest(fullName, number, comment) {
+      const kit = await octokit();
+      await kit.request("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+        ...splitName(fullName),
+        issue_number: number,
+        body: comment,
+      });
+      await kit.request("PATCH /repos/{owner}/{repo}/pulls/{pull_number}", {
+        ...splitName(fullName),
+        pull_number: number,
+        state: "closed",
+      });
+    },
   };
 }
 

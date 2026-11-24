@@ -174,6 +174,29 @@ async function holdingFor(db: Db, taskId: number, now: Date) {
 }
 
 /**
+ * Puts the holder's work back on the board: for a whole-milestone adoption,
+ * every task they still hold in it; otherwise just this one. Also ends a lapsed
+ * adoption still marked active. Returns the task ids that went back. Shared by
+ * hand-back, release and reopen.
+ */
+export async function releaseHolding(db: Db, taskId: number, now: Date): Promise<number[]> {
+  const task = await loadTaskView(db, taskId, now);
+  if (!task) throw new PermissionError("That task doesn't exist.");
+  if (!task.holder) {
+    if (task.adoptionId) await endAdoptions(db, [{ id: task.adoptionId, taskId: task.id }], "released", now);
+    return task.adoptionId ? [task.id] : [];
+  }
+  const { group } = await holdingFor(db, taskId, now);
+  await endAdoptions(
+    db,
+    group.map((t) => ({ id: t.adoptionId!, taskId: t.id })),
+    "released",
+    now,
+  );
+  return group.map((t) => t.id);
+}
+
+/**
  * The contributor stops. For a whole-milestone adoption that hands back every
  * task they still hold in it; merged tasks stay done and the rest reopen.
  */
@@ -182,12 +205,7 @@ export async function handBack(db: Db, actorId: number, taskId: number, now: Dat
     const actor = await getUser(tx, actorId);
     const { task, holder, group } = await holdingFor(tx, taskId, now);
     enforce(canHandBack(actor, { holderId: holder.userId, hasOpenPr: group.some((t) => t.hasOpenPr) }));
-    await endAdoptions(
-      tx,
-      group.map((t) => ({ id: t.adoptionId!, taskId: t.id })),
-      "released",
-      now,
-    );
+    await releaseHolding(tx, taskId, now);
     await syncMilestoneStatus(tx, task.milestoneId, now);
     await writeAudit(tx, {
       actorId: actor.id,
@@ -205,12 +223,7 @@ export async function releaseAdoption(db: Db, actorId: number, taskId: number, n
     const actor = await getUser(tx, actorId);
     const { task, holder, group } = await holdingFor(tx, taskId, now);
     enforce(canCloseOrRelease(actor, task));
-    await endAdoptions(
-      tx,
-      group.map((t) => ({ id: t.adoptionId!, taskId: t.id })),
-      "released",
-      now,
-    );
+    await releaseHolding(tx, taskId, now);
     await syncMilestoneStatus(tx, task.milestoneId, now);
     await writeAudit(tx, {
       actorId: actor.id,
