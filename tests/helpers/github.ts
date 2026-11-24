@@ -36,6 +36,11 @@ export function fakeGitHub() {
       return text === undefined ? null : { text, sha: `sha-${text.length}` };
     },
     tree: async (fullName) => ({ paths: Object.keys(world.files.get(fullName) ?? {}), truncated: false }),
+    listOpenPullRequests: async (fullName) =>
+      [...world.pulls.entries()]
+        .filter(([key, pr]) => key.startsWith(`${fullName}#`) && pr.state === "open")
+        .map(([, pr]) => ({ ...pr }))
+        .sort((a, b) => b.number - a.number),
     getPullRequest: async (fullName, n) => {
       const pr = world.pulls.get(prKey(fullName, n));
       return pr ? { ...pr } : null;

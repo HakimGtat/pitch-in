@@ -15,6 +15,7 @@ import { handlePullRequestEvent } from "@/lib/pr-link";
 import { handlePrClosed, renewLock } from "@/lib/merge";
 import { recordQuestion } from "@/lib/questions";
 import { refreshRepo, reposForPush } from "@/lib/repos";
+import { queueSweep, runSweep, SWEEP_JOB } from "@/lib/sweep";
 
 /** What the handlers need from outside. Tests pass a fake GitHub and a fake scanner. */
 /** What the handlers need from outside. Tests pass a fake GitHub and a fake scanner. `appId` is the Pitch In App's own id. */
@@ -212,8 +213,19 @@ export async function handlePushAlertJob(db: Db, job: PushAlertJob, log: Logger,
   log.info(`Push to repo ${job.repoId} at ${job.after.slice(0, 7)}: ${verdict === "alert" ? "no owner-merged PR, alert raised" : verdict.replace(/_/g, " ")}`);
 }
 
+export async function handleSweepJob(db: Db, log: Logger, deps: HandlerDeps): Promise<void> {
+  try {
+    const r = await runSweep(db, deps.repoGitHub());
+    if (r.queued || r.questions) log.info(`Catch-up sweep: looked at ${r.looked} PR(s), queued checks for ${r.queued}, picked up ${r.questions} question(s)`);
+  } finally {
+    // Always schedule the next one, even if GitHub couldn't be reached this time.
+    await queueSweep(db, new Date());
+  }
+}
+
 export function createHandlers(deps: HandlerDeps): Record<string, JobHandler> {
   return {
+    [SWEEP_JOB]: (db, _payload, log) => handleSweepJob(db, log, deps),
     [PUSH_ALERT_JOB]: (db, payload, log) => handlePushAlertJob(db, payload as PushAlertJob, log, deps),
     [WEBHOOK_JOB]: (db, payload, log) => handleGitHubWebhook(db, payload as GitHubWebhookJob, log, deps),
     [CHECKS_JOB]: (db, payload, log) => handleChecksJob(db, payload as ChecksJob, log, deps),

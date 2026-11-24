@@ -1,5 +1,6 @@
 import { createDb } from "@/lib/db/client";
 import { requeueStaleJobs, runNextJob, type Logger } from "@/lib/jobs";
+import { queueSweep } from "@/lib/sweep";
 import { handlers } from "./handlers";
 
 // The worker polls the jobs table. It never runs contributor code; from
@@ -26,6 +27,8 @@ async function main() {
 
   const requeued = await requeueStaleJobs(db, new Date());
   if (requeued) log.info(`Put ${requeued} interrupted job(s) back in the queue`);
+  // Catch up on anything that happened while the worker was off, then every five minutes.
+  await queueSweep(db, new Date(), { now: true });
   log.info("Started, waiting for jobs");
 
   while (!stopping) {

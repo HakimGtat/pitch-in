@@ -174,6 +174,12 @@ export function createRepoGitHub(config: Config): RepoGitHub {
       }
     },
 
+    async listOpenPullRequests(fullName) {
+      const kit = await octokit();
+      const pulls = await kit.paginate("GET /repos/{owner}/{repo}/pulls", { ...splitName(fullName), state: "open", per_page: 100 });
+      return (pulls as RawPull[]).map(toPullRequest);
+    },
+
     async listPullRequestFiles(fullName, number) {
       const kit = await octokit();
       const files = await kit.paginate("GET /repos/{owner}/{repo}/pulls/{pull_number}/files", {

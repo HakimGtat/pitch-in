@@ -59,6 +59,8 @@ export interface RepoGitHub {
   readFile(fullName: string, path: string, ref: string): Promise<{ text: string; sha: string } | null>;
   /** Every file path on a branch. */
   tree(fullName: string, ref: string): Promise<RepoTree>;
+  /** The repo's open pull requests, newest first. */
+  listOpenPullRequests(fullName: string): Promise<PullRequest[]>;
   /** One pull request, or null if it doesn't exist. */
   getPullRequest(fullName: string, number: number): Promise<PullRequest | null>;
   /** The PR's changed files with their patches. */
