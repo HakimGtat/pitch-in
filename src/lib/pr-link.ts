@@ -3,8 +3,11 @@ import { getUser, PermissionError } from "./admin";
 import { writeAudit } from "./audit";
 import type { Db } from "./db/client";
 import { auditLog, submissions, tasks } from "./db/schema";
-import { parseTaskRef, taskRef } from "./prompt";
+import { parseTaskLine } from "./checks/pr-body";
+import { taskRef } from "./prompt";
 import { loadTaskView, type FullTaskView } from "./views";
+
+export { parseTaskLine };
 
 // PR linking (plan.md, "PR linking"). A PR links to a task through a
 // `Task: <id>` first line in its body, or through a link the adopter or the
@@ -12,16 +15,6 @@ import { loadTaskView, type FullTaskView } from "./views";
 // Draft PRs link too. PRs that don't target the default branch are ignored.
 
 // ---------- pure rules ----------
-
-/** The task id from a body whose first line is `Task: PI-9` (or `Task: 9`). */
-export function parseTaskLine(body: string | null | undefined): number | null {
-  const first = (body ?? "").replace(/^﻿/, "").split(/\r?\n/).find((line) => line.trim() !== "");
-  const m = first && /^\s*task\s*:\s*(\S+)\s*$/i.exec(first);
-  if (!m) return null;
-  const value = m[1];
-  const id = /^\d+$/.test(value) ? Number(value) : parseTaskRef(value);
-  return id !== null && Number.isSafeInteger(id) && id > 0 ? id : null;
-}
 
 /** `https://github.com/owner/repo/pull/12` (extra path, query or hash allowed) -> repo and number. */
 export function parsePrUrl(text: string): { repo: string; number: number } | null {
