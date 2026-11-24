@@ -118,9 +118,11 @@ export async function handleGitHubWebhook(
         merged: pr.merged === true,
         mergedBy: str(obj(pr.merged_by).login) ?? null,
         mergeCommitSha: str(pr.merge_commit_sha) ?? null,
+        baseRef: str(obj(pr.base).ref),
+        defaultBranch: str(repository.default_branch) ?? repo.defaultBranch,
       });
       log.info(`GitHub webhook ${label}: PR #${pr.number} ${closed.status === "merged" ? `merged, task ${closed.taskId} done` : closed.status.replace("_", " ")}`);
-      if (pr.merged === true) {
+      if (pr.merged === true && str(obj(pr.base).ref) === (str(repository.default_branch) ?? repo.defaultBranch)) {
         const verdict = await checkMerge(db, deps.repoGitHub(), {
           repo,
           prNumber: Number(pr.number),

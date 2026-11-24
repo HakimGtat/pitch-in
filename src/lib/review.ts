@@ -62,8 +62,14 @@ export async function reopenTask(
     .select()
     .from(submissions)
     .where(and(eq(submissions.taskId, task.id), inArray(submissions.status, [...OPEN_SUBMISSION])));
-  // GitHub first: if it can't close the PR, nothing changes here.
-  for (const s of open) await gh.closePullRequest(task.repoFullName, s.prNumber, reopenComment(reason));
+  // GitHub first: if it can't close the PR, nothing changes here. Only PRs that are really open get the comment.
+  const closedPrs: number[] = [];
+  for (const s of open) {
+    const pr = await gh.getPullRequest(task.repoFullName, s.prNumber);
+    if (pr?.state !== "open") continue;
+    await gh.closePullRequest(task.repoFullName, s.prNumber, reopenComment(reason));
+    closedPrs.push(s.prNumber);
+  }
 
   return db.transaction(async (tx) => {
     if (open.length) {
@@ -101,12 +107,12 @@ export async function reopenTask(
       details: {
         reason,
         developersOnly: input.developersOnly,
-        closedPrs: open.map((s) => s.prNumber),
+        closedPrs,
         reopened: released.map(taskRef),
         holder: task.holder?.handle ?? null,
       },
     });
     const reopened = released.includes(task.id) ? released : [task.id, ...released];
-    return { reopened, closedPrs: open.map((s) => s.prNumber) };
+    return { reopened, closedPrs };
   });
 }

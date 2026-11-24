@@ -1,8 +1,10 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { jobs, repos, submissions, tasks, type Repo, type Submission, type Task } from "../db/schema";
 import type { CheckRunInput, PullRequest, RepoGitHub } from "../github/repos";
-import { linkPullRequest } from "../pr-link";
+import { checkMerge } from "../alerts";
+import { handlePrClosed } from "../merge";
+import { detachSubmission, linkPullRequest } from "../pr-link";
 import { taskRef } from "../prompt";
 import { checkCi, fromCommitStatus } from "./ci";
 import { checkCriteria } from "./criteria";
@@ -130,7 +132,9 @@ async function linkedSubmission(db: Db, repoId: number, prNumber: number) {
     .select({ submission: submissions, task: tasks })
     .from(submissions)
     .innerJoin(tasks, eq(submissions.taskId, tasks.id))
-    .where(and(eq(tasks.repoId, repoId), eq(submissions.prNumber, prNumber)));
+    .where(and(eq(tasks.repoId, repoId), eq(submissions.prNumber, prNumber)))
+    .orderBy(desc(submissions.id))
+    .limit(1);
   return row ?? null;
 }
 
@@ -149,9 +153,35 @@ export async function runChecks(
   const [repo] = await db.select().from(repos).where(eq(repos.id, job.repoId));
   if (!repo || repo.removedAt) return { status: "skipped", why: "the repo isn't connected" };
   const pr = await deps.gh.getPullRequest(repo.fullName, job.prNumber);
-  if (!pr) return { status: "skipped", why: "the PR is gone" };
-  if (pr.state !== "open") return { status: "skipped", why: "the PR is closed" };
-  if (pr.baseRef !== repo.defaultBranch) return { status: "skipped", why: "the PR isn't into the default branch" };
+  const before = await linkedSubmission(db, repo.id, job.prNumber);
+  const stillOpen = before && OPEN_SUBMISSION.has(before.submission.status);
+  if (!pr) {
+    // A pasted link to a PR that doesn't exist mustn't hold the task forever.
+    if (stillOpen) await detachSubmission(db, before.submission.id, before.task.id, now, "the PR doesn't exist");
+    return { status: "skipped", why: "the PR is gone" };
+  }
+  if (pr.state !== "open") {
+    // Closed or merged, and the webhook that said so was missed or came first: catch up now.
+    if (stillOpen) {
+      await handlePrClosed(
+        db,
+        {
+          repoId: repo.id,
+          prNumber: pr.number,
+          merged: pr.merged,
+          mergedBy: pr.mergedBy,
+          mergeCommitSha: pr.mergeCommitSha,
+          baseRef: pr.baseRef,
+          defaultBranch: repo.defaultBranch,
+        },
+        now,
+      );
+      if (pr.merged && pr.baseRef === repo.defaultBranch) {
+        await checkMerge(db, deps.gh, { repo, prNumber: pr.number, mergedBy: pr.mergedBy, mergeCommitSha: pr.mergeCommitSha }, now);
+      }
+    }
+    return { status: "skipped", why: "the PR is closed" };
+  }
 
   // Link (or re-link) first: it fills in a pasted link's head commit and gives the reason when a PR doesn't link.
   const link = await linkPullRequest(db, prInfo(repo, pr), now);

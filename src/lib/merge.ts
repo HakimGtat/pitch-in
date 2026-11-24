@@ -22,6 +22,9 @@ export type ClosedPr = {
   merged: boolean;
   mergedBy: string | null;
   mergeCommitSha: string | null;
+  /** Where the PR was merged. A merge into any branch but the default one doesn't finish the task. */
+  baseRef?: string;
+  defaultBranch?: string;
 };
 
 export type CloseOutcome =
@@ -74,7 +77,8 @@ export async function handlePrClosed(db: Db, pr: ClosedPr, now: Date = new Date(
       .from(adoptions)
       .where(and(eq(adoptions.taskId, task.id), eq(adoptions.status, "active")));
 
-    if (!pr.merged) {
+    const merged = pr.merged && (!pr.baseRef || !pr.defaultBranch || pr.baseRef === pr.defaultBranch);
+    if (!merged) {
       // Closed without a merge: the task stays the adopter's (or open, if nobody holds it).
       await tx.update(submissions).set({ status: "closed", updatedAt: now }).where(eq(submissions.id, submission.id));
       if (task.status === "in_review") {

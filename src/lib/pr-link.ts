@@ -1,4 +1,4 @@
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { getUser, PermissionError } from "./admin";
 import { writeAudit } from "./audit";
 import type { Db } from "./db/client";
@@ -6,7 +6,7 @@ import { auditLog, submissions, tasks } from "./db/schema";
 import { parseTaskLine } from "./checks/pr-body";
 import { queueChecks } from "./checks/run";
 import { taskRef } from "./prompt";
-import { loadTaskView, type FullTaskView } from "./views";
+import { loadTaskView, OPEN_SUBMISSION, type FullTaskView } from "./views";
 
 export { parseTaskLine };
 
@@ -83,12 +83,64 @@ const prTarget = (repoFullName: string, number: number) => `${repoFullName}#${nu
 async function existingLink(db: Db, repoId: number, number: number, exceptTaskId?: number) {
   const where = and(eq(tasks.repoId, repoId), eq(submissions.prNumber, number));
   const [row] = await db
-    .select({ id: submissions.id, taskId: submissions.taskId, headSha: submissions.headSha })
+    .select({
+      id: submissions.id,
+      taskId: submissions.taskId,
+      headSha: submissions.headSha,
+      status: submissions.status,
+      authorId: submissions.authorId,
+    })
     .from(submissions)
     .innerJoin(tasks, eq(submissions.taskId, tasks.id))
-    .where(exceptTaskId === undefined ? where : and(where, ne(submissions.taskId, exceptTaskId)));
+    .where(exceptTaskId === undefined ? where : and(where, ne(submissions.taskId, exceptTaskId)))
+    .orderBy(desc(submissions.id))
+    .limit(1);
   return row ?? null;
 }
+
+const OPEN = new Set<string>(OPEN_SUBMISSION);
+
+/** The task's other open PR, if it has one: one task, one PR. */
+async function otherOpenPr(db: Db, taskId: number, prNumber: number): Promise<number | null> {
+  const [row] = await db
+    .select({ prNumber: submissions.prNumber })
+    .from(submissions)
+    .where(
+      and(eq(submissions.taskId, taskId), inArray(submissions.status, [...OPEN_SUBMISSION]), ne(submissions.prNumber, prNumber)),
+    );
+  return row?.prNumber ?? null;
+}
+
+/** Records why a PR didn't link, once per reason: pushes and edits repeat the event. */
+async function noteUnlinked(db: Db, pr: PullRequestInfo, reason: string, taskId: number | null): Promise<LinkOutcome> {
+  const [last] = await db
+    .select({ details: auditLog.details })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, "pr.unlinked"), eq(auditLog.target, prTarget(pr.repoFullName, pr.number))))
+    .orderBy(desc(auditLog.id))
+    .limit(1);
+  if ((last?.details as { reason?: string } | null)?.reason !== reason) {
+    await writeAudit(db, {
+      actorId: null,
+      action: "pr.unlinked",
+      target: prTarget(pr.repoFullName, pr.number),
+      details: { reason, taskId, author: pr.authorHandle, draft: pr.draft },
+    });
+  }
+  return { status: "unlinked", reason };
+}
+
+/** The PR stopped being the task's PR (closed, gone, or retargeted): the task waits for another. */
+export async function detachSubmission(db: Db, submissionId: number, taskId: number, now: Date, why: string): Promise<void> {
+  await db.update(submissions).set({ status: "closed", updatedAt: now }).where(eq(submissions.id, submissionId));
+  await db
+    .update(tasks)
+    .set({ status: "adopted", updatedAt: now })
+    .where(and(eq(tasks.id, taskId), eq(tasks.status, "in_review")));
+  await writeAudit(db, { actorId: null, action: "pr.detached", target: taskRef(taskId), details: { submissionId, why } });
+}
+
+const oneTaskOnePr = (taskId: number, other: number) => `${taskRef(taskId)} already has an open PR (#${other}). One task, one PR.`;
 
 /**
  * Links a PR from the pull_request webhook. Linked PRs get a submissions row.
@@ -96,15 +148,47 @@ async function existingLink(db: Db, repoId: number, number: number, exceptTaskId
  * (the submissions table needs a task and an author, so it can't hold those).
  */
 export async function linkPullRequest(db: Db, pr: PullRequestInfo, now: Date = new Date()): Promise<LinkOutcome> {
-  if (isIgnoredBase(pr.baseRef, pr.defaultBranch)) return { status: "ignored" };
-
   const known = await existingLink(db, pr.repoId, pr.number);
+
+  if (isIgnoredBase(pr.baseRef, pr.defaultBranch)) {
+    // Retargeted away from the default branch: it isn't the task's PR any more.
+    if (known && OPEN.has(known.status)) await detachSubmission(db, known.id, known.taskId, now, `retargeted to ${pr.baseRef}`);
+    return { status: "ignored" };
+  }
+
   if (known) {
-    // An earlier event or a pasted link already linked it; a push only moves the head.
-    if (pr.headSha && pr.headSha !== known.headSha) {
-      await db.update(submissions).set({ headSha: pr.headSha, updatedAt: now }).where(eq(submissions.id, known.id));
+    const linked = { status: "linked" as const, taskId: known.taskId, submissionId: known.id };
+    if (known.status === "merged") return linked;
+    if (OPEN.has(known.status)) {
+      if (pr.headSha && pr.headSha !== known.headSha) {
+        // A new push: the old results no longer describe the PR, so it isn't ready for review until it's checked again.
+        await db.update(submissions).set({ headSha: pr.headSha, status: "checking", updatedAt: now }).where(eq(submissions.id, known.id));
+        await db
+          .update(tasks)
+          .set({ status: "adopted", updatedAt: now })
+          .where(and(eq(tasks.id, known.taskId), eq(tasks.status, "in_review")));
+      }
+      return linked;
     }
-    return { status: "linked", taskId: known.taskId, submissionId: known.id };
+    // Closed earlier and open again: it's the task's PR again if the same person still holds the task.
+    const held = await loadTaskView(db, known.taskId, now);
+    const finished = !held || held.status === "merged" || held.status === "closed";
+    if (held && !finished && held.holder?.userId === known.authorId) {
+      const other = await otherOpenPr(db, held.id, pr.number);
+      if (other !== null) return noteUnlinked(db, pr, oneTaskOnePr(held.id, other), held.id);
+      await db
+        .update(submissions)
+        .set({ status: "checking", headSha: pr.headSha || known.headSha, updatedAt: now })
+        .where(eq(submissions.id, known.id));
+      await writeAudit(db, {
+        actorId: null,
+        action: "pr.relinked",
+        target: prTarget(pr.repoFullName, pr.number),
+        details: { taskId: held.id },
+      });
+      return linked;
+    }
+    return noteUnlinked(db, pr, `${taskRef(known.taskId)} has moved on since this PR was closed (it was reopened or finished).`, known.taskId);
   }
 
   const taskId = parseTaskLine(pr.body);
@@ -117,23 +201,10 @@ export async function linkPullRequest(db: Db, pr: PullRequestInfo, now: Date = n
   });
 
   if (!decision.linked || !task?.holder) {
-    const reason = decision.linked ? "Nobody has taken on this task right now." : decision.reason;
-    // Pushes and edits repeat the event; only note a changed reason.
-    const [last] = await db
-      .select({ details: auditLog.details })
-      .from(auditLog)
-      .where(and(eq(auditLog.action, "pr.unlinked"), eq(auditLog.target, prTarget(pr.repoFullName, pr.number))))
-      .orderBy(desc(auditLog.id))
-      .limit(1);
-    if ((last?.details as { reason?: string } | null)?.reason === reason) return { status: "unlinked", reason };
-    await writeAudit(db, {
-      actorId: null,
-      action: "pr.unlinked",
-      target: prTarget(pr.repoFullName, pr.number),
-      details: { reason, taskId, author: pr.authorHandle, draft: pr.draft },
-    });
-    return { status: "unlinked", reason };
+    return noteUnlinked(db, pr, decision.linked ? "Nobody has taken on this task right now." : decision.reason, taskId);
   }
+  const other = await otherOpenPr(db, task.id, pr.number);
+  if (other !== null) return noteUnlinked(db, pr, oneTaskOnePr(task.id, other), task.id);
 
   const [row] = await db
     .insert(submissions)
@@ -226,14 +297,26 @@ export async function linkPastedPr(
     throw new PermissionError(`That PR is in ${parsed.repo}, but this task is in ${task.repoFullName}.`);
   }
   const other = await existingLink(db, task.repoId, parsed.number, task.id);
-  if (other) throw new PermissionError(`That PR is already linked to ${taskRef(other.taskId)}.`);
+  if (other && other.status !== "closed") throw new PermissionError(`That PR is already linked to ${taskRef(other.taskId)}.`);
+  const open = await otherOpenPr(db, task.id, parsed.number);
+  if (open !== null) throw new PermissionError(`This task already has an open PR (#${open}). One task, one PR.`);
 
-  const [row] = await db
-    .insert(submissions)
-    .values({ taskId: task.id, prNumber: parsed.number, headSha: "", authorId: holder.userId, status: "checking", createdAt: now, updatedAt: now })
-    .onConflictDoNothing()
-    .returning({ id: submissions.id });
-  if (!row) throw new PermissionError("That PR is already linked to this task.");
+  const [mine] = await db
+    .select({ id: submissions.id, status: submissions.status })
+    .from(submissions)
+    .where(and(eq(submissions.taskId, task.id), eq(submissions.prNumber, parsed.number)));
+  if (mine && mine.status !== "closed") throw new PermissionError("That PR is already linked to this task.");
+  // A PR linked before and closed since comes back as this task's PR; the worker checks it's really open.
+  const [row] = mine
+    ? await db
+        .update(submissions)
+        .set({ status: "checking", authorId: holder.userId, updatedAt: now })
+        .where(eq(submissions.id, mine.id))
+        .returning({ id: submissions.id })
+    : await db
+        .insert(submissions)
+        .values({ taskId: task.id, prNumber: parsed.number, headSha: "", authorId: holder.userId, status: "checking", createdAt: now, updatedAt: now })
+        .returning({ id: submissions.id });
   await writeAudit(db, {
     actorId: actor.id,
     action: "pr.linked",
