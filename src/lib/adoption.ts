@@ -223,6 +223,10 @@ export async function releaseAdoption(db: Db, actorId: number, taskId: number, n
     const actor = await getUser(tx, actorId);
     const { task, holder, group } = await holdingFor(tx, taskId, now);
     enforce(canCloseOrRelease(actor, task));
+    // Releasing while their PR is open would let someone else take the task and get the credit for that PR.
+    if (group.some((t) => t.hasOpenPr)) {
+      throw new PermissionError("Their PR is still open. Reopen the task instead: it closes the PR with your reason.");
+    }
     await releaseHolding(tx, taskId, now);
     await syncMilestoneStatus(tx, task.milestoneId, now);
     await writeAudit(tx, {

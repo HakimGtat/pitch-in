@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, notInArray } from "drizzle-orm";
 import { writeAudit } from "./audit";
 import type { Db } from "./db/client";
 import { questions, repos, submissions, tasks, type Question } from "./db/schema";
@@ -99,7 +99,14 @@ export async function loadWaitingOnOwner(db: Db, ownerId: number): Promise<Waiti
     .innerJoin(submissions, eq(questions.submissionId, submissions.id))
     .innerJoin(tasks, eq(submissions.taskId, tasks.id))
     .innerJoin(repos, eq(tasks.repoId, repos.id))
-    .where(and(eq(tasks.ownerId, ownerId), isNull(questions.answeredAt), isNull(repos.removedAt)))
+    .where(
+      and(
+        eq(tasks.ownerId, ownerId),
+        isNull(questions.answeredAt),
+        notInArray(tasks.status, ["merged", "closed"]),
+        isNull(repos.removedAt),
+      ),
+    )
     .orderBy(asc(questions.askedAt));
   return rows.map((r) => ({
     taskId: r.task.id,
@@ -143,3 +150,15 @@ export function answerInClaude(input: Parameters<typeof buildAnswerPrompt>[0]): 
   return { prompt, url, long: isLongLink(url) };
 }
 
+
+/** A task was closed or its project ended: its open PRs are no longer the site's business, and their questions are settled. */
+export async function closeOpenSubmissions(db: Db, taskIds: number[], now: Date): Promise<number[]> {
+  if (taskIds.length === 0) return [];
+  const rows = await db
+    .update(submissions)
+    .set({ status: "closed", updatedAt: now })
+    .where(and(inArray(submissions.taskId, taskIds), inArray(submissions.status, [...OPEN_SUBMISSION])))
+    .returning({ id: submissions.id, prNumber: submissions.prNumber });
+  await answerQuestionsFor(db, rows.map((r) => r.id), now);
+  return rows.map((r) => r.prNumber);
+}

@@ -19,6 +19,7 @@ import type { RepoGitHub } from "./github/repos";
 import { canCloseOrRelease, canManageOwnWork, canPostTask, type Decision } from "./permissions";
 import { checkImport, parseImport, type ImportPreview } from "./plan-import";
 import { taskRef } from "./prompt";
+import { closeOpenSubmissions } from "./questions";
 import { loadTaskView, loadTaskViews } from "./views";
 
 // Posting and managing work: single tasks, projects, milestones. Posting and
@@ -198,6 +199,7 @@ export async function closeTask(db: Db, actorId: number, taskId: number, now: Da
     if (task.status === "merged" || task.status === "closed") throw new PermissionError("This task is already finished.");
     if (task.adoptionId) await endAdoptions(tx, [{ id: task.adoptionId, taskId: task.id }], "released", now);
     await tx.update(tasks).set({ status: "closed", closedAt: now, updatedAt: now }).where(eq(tasks.id, task.id));
+    await closeOpenSubmissions(tx, [task.id], now);
     await syncMilestoneStatus(tx, task.milestoneId, now);
     await writeAudit(tx, {
       actorId: actor.id,
@@ -435,6 +437,7 @@ export async function finishProject(db: Db, projectId: number, status: "done" | 
       .where(and(inArray(adoptions.taskId, ids), eq(adoptions.status, "active")));
     await endAdoptions(db, active, "released", now);
     await db.update(tasks).set({ status: "closed", closedAt: now, updatedAt: now }).where(inArray(tasks.id, ids));
+    await closeOpenSubmissions(db, ids, now);
   }
   await db.update(projects).set({ status, endedAt: now, updatedAt: now }).where(eq(projects.id, projectId));
 }

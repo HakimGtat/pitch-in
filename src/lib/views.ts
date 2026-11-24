@@ -302,7 +302,14 @@ export async function loadOwnerQueue(db: Db, ownerId: number): Promise<OwnerQueu
     .from(submissions)
     .innerJoin(tasks, eq(submissions.taskId, tasks.id))
     .innerJoin(repos, eq(tasks.repoId, repos.id))
-    .where(and(eq(tasks.ownerId, ownerId), inArray(submissions.status, ["checks_failed", "in_review"]), isNull(repos.removedAt)))
+    .where(
+      and(
+        eq(tasks.ownerId, ownerId),
+        inArray(submissions.status, ["checks_failed", "in_review"]),
+        notInArray(tasks.status, ["merged", "closed"]),
+        isNull(repos.removedAt),
+      ),
+    )
     .orderBy(asc(submissions.id));
   const rank = (s: Submission["status"]) => (s === "checks_failed" ? 0 : 1);
   return rows

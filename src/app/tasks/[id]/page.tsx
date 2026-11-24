@@ -299,7 +299,7 @@ export default async function TaskPage({
                     Edit
                   </Link>
                 ) : null}
-                {task.holder && !mine ? (
+                {task.holder && !mine && !submission ? (
                   <form action={releaseAction}>
                     <input type="hidden" name="taskId" value={task.id} />
                     <button className={secondaryButtonClass}>Release @{task.holder.handle}</button>
