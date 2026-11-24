@@ -4,6 +4,7 @@ import { jobs, repos, submissions, tasks, type Repo, type Submission, type Task 
 import type { CheckRunInput, PullRequest, RepoGitHub } from "../github/repos";
 import { checkMerge } from "../alerts";
 import { handlePrClosed } from "../merge";
+import { isQuestion, recordQuestion } from "../questions";
 import { detachSubmission, linkPullRequest } from "../pr-link";
 import { taskRef } from "../prompt";
 import { checkCi, fromCommitStatus } from "./ci";
@@ -208,6 +209,13 @@ export async function runChecks(
   if (!row) return { status: "skipped", why: "the PR isn't linked" };
   const { submission, task } = row;
   if (!OPEN_SUBMISSION.has(submission.status)) return { status: "skipped", why: `the submission is ${submission.status}` };
+
+  // A question left before the PR linked (or whose webhook was missed) is picked up here. Recording is idempotent.
+  for (const c of await deps.gh.listIssueComments(repo.fullName, pr.number)) {
+    if (isQuestion(c.body)) {
+      await recordQuestion(db, { repoId: repo.id, prNumber: pr.number, commentId: c.id, body: c.body, commenter: c.author }, now);
+    }
+  }
 
   const files = await withContentForUnpatched(deps.gh, repo.fullName, pr.headSha, await deps.gh.listPullRequestFiles(repo.fullName, pr.number));
   const ci = [

@@ -152,8 +152,14 @@ export default async function TaskPage({
             <h2 className="font-semibold">Take it on</h2>
             {task.holder ? (
               <p className="mt-2 text-sm text-stone-700">
-                {mine ? "It's yours" : `@${task.holder.handle} took this on`} until <LocalTime value={task.holder.expiresAt} />{" "}
-                ({timeLeft(task.holder.expiresAt, now)} left).
+                {mine ? "It's yours" : `@${task.holder.handle} took this on`}
+                {task.hasOpenPr ? (
+                  ", and it's held while the PR is open."
+                ) : (
+                  <>
+                    {" "}until <LocalTime value={task.holder.expiresAt} /> ({timeLeft(task.holder.expiresAt, now)} left).
+                  </>
+                )}
                 {task.holder.milestoneId ? " Taken as part of the whole milestone." : ""}
               </p>
             ) : null}

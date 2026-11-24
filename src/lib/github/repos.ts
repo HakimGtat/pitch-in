@@ -72,6 +72,8 @@ export interface RepoGitHub {
   updateCheckRun(fullName: string, id: number, run: CheckRunInput): Promise<void>;
   /** Comments on a PR as the Pitch In App, then closes it without merging. */
   closePullRequest(fullName: string, number: number, comment: string): Promise<void>;
+  /** The comments on a PR's conversation, oldest first. */
+  listIssueComments(fullName: string, number: number): Promise<{ id: number; body: string; author: string }[]>;
   /** Numbers of the PRs GitHub associates with a commit (a merge commit's own PR among them). */
   pullsForCommit(fullName: string, sha: string): Promise<number[]>;
 }

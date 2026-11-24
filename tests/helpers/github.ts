@@ -15,7 +15,7 @@ export function fakeGitHub() {
     checkRuns: new Map<string, CheckRun[]>(),
     statuses: new Map<string, { context: string; state: string }[]>(),
     posted: [] as PostedCheckRun[],
-    comments: [] as { fullName: string; number: number; body: string }[],
+    comments: [] as { fullName: string; number: number; body: string; id?: number; author?: string }[],
     closed: [] as { fullName: string; number: number }[],
   };
   let nextCheckRunId = 1000;
@@ -69,6 +69,8 @@ export function fakeGitHub() {
       if (pr) pr.state = "closed";
       world.closed.push({ fullName, number: n });
     },
+    listIssueComments: async (fullName, n) =>
+      world.comments.filter((c) => c.fullName === fullName && c.number === n).map((c, i) => ({ id: c.id ?? 50_000 + i, body: c.body, author: c.author ?? "pitch-in" })),
     pullsForCommit: async (fullName, sha) =>
       [...world.pulls.entries()]
         .filter(([key, pr]) => key.startsWith(`${fullName}#`) && (pr.mergeCommitSha === sha || pr.headSha === sha))

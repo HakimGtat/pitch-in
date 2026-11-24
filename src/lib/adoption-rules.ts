@@ -63,8 +63,10 @@ function basics(actor: AdoptActor, projectOpen: boolean): Decision | null {
 const ownWork = (actor: AdoptActor, ownerId: number): Decision | null =>
   actor.id === ownerId ? deny("This is your own work. You review it, so someone else takes it on.") : null;
 
-function holderReason(actor: AdoptActor, holder: Holder): Decision {
+function holderReason(actor: AdoptActor, holder: Holder, hasOpenPr = false): Decision {
   if (holder.userId === actor.id) return deny("You've already taken this on.");
+  // While their PR is open the task stays theirs: no lock runs out, and only the owner can reopen it.
+  if (hasOpenPr) return deny(`@${holder.handle} has taken this on, and their PR is open.`);
   return deny(`@${holder.handle} has taken this on. It frees up if they hand it back or the lock runs out.`);
 }
 
@@ -78,7 +80,7 @@ export function canAdoptTask(
   if (task.status === "merged") return deny("This task is done.");
   if (task.status === "closed") return deny("The owner closed this task.");
   if (IN_REVIEW.has(task.status)) return deny("A PR for this task is in review.");
-  if (task.holder) return holderReason(actor, task.holder);
+  if (task.holder) return holderReason(actor, task.holder, task.hasOpenPr);
   const own = ownWork(actor, task.ownerId);
   if (own) return own;
 

@@ -250,6 +250,16 @@ export function createRepoGitHub(config: Config): RepoGitHub {
       });
     },
 
+    async listIssueComments(fullName, number) {
+      const kit = await octokit();
+      const comments = await kit.paginate("GET /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+        ...splitName(fullName),
+        issue_number: number,
+        per_page: 100,
+      });
+      return comments.map((c) => ({ id: Number(c.id), body: c.body ?? "", author: c.user?.login ?? "ghost" }));
+    },
+
     async pullsForCommit(fullName, sha) {
       const kit = await octokit();
       try {

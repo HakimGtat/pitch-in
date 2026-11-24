@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { adoptTask } from "@/lib/adoption";
+import { canAdoptTask } from "@/lib/adoption-rules";
 import { emptyBrief } from "@/lib/brief";
 import type { Db } from "@/lib/db/client";
 import { submissions } from "@/lib/db/schema";
@@ -119,5 +120,13 @@ describe("a PR whose checks failed", () => {
     const view = await loadTaskView(db, taskIds[0], weekLater);
     expect(view?.holder?.handle).toBe("alice");
     expect(view?.hasOpenPr).toBe(true);
+  });
+});
+
+describe("someone else looking at a task whose PR is open", () => {
+  it("is told it's held while the PR is open, not that a lock will run out", async () => {
+    const view = (await loadTaskView(db, taskIds[0], t0))!;
+    const decision = canAdoptTask({ ...bob, profile: "developer" }, view, { projectOpen: true });
+    expect(decision).toEqual({ ok: false, reason: "@alice has taken this on, and their PR is open." });
   });
 });

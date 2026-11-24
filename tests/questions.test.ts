@@ -11,6 +11,7 @@ import { linkPullRequest } from "@/lib/pr-link";
 import { answerInClaude, buildAnswerPrompt, isQuestion, loadWaitingOnOwner, openQuestionsFor } from "@/lib/questions";
 import { connectRepo } from "@/lib/repos";
 import { reopenTask } from "@/lib/review";
+import { runChecks } from "@/lib/checks/run";
 import { postTask } from "@/lib/work";
 import { createHandlers } from "@/worker/handlers";
 import { createTestDb, insertUser } from "./helpers/db";
@@ -96,7 +97,7 @@ describe("a question for the owner", () => {
   it("shows the task as waiting on the owner on their pages", async () => {
     await comment("alice", QUESTION);
     expect(await loadWaitingOnOwner(db, olive.id)).toEqual([
-      { taskId, title: "Reject empty uploads", prNumber: 3, repoFullName: "acme/uploader", question: QUESTION },
+      { questionId: expect.any(Number), taskId, title: "Reject empty uploads", prNumber: 3, repoFullName: "acme/uploader", question: QUESTION },
     ]);
   });
 
@@ -162,5 +163,22 @@ describe("Answer in Claude", () => {
     expect(isQuestion("Question for owner: x")).toBe(true);
     expect(isQuestion("**Question for owner:** x")).toBe(true);
     expect(isQuestion("A question for owner: x")).toBe(false);
+  });
+});
+
+describe("questions written with markdown, or before the PR linked", () => {
+  it("are recognised with bold or a quote around the prefix", () => {
+    expect(isQuestion("**Question for owner**: which?")).toBe(true);
+    expect(isQuestion("> Question for owner: which?")).toBe(true);
+    expect(isQuestion("_Question for owner:_ which?")).toBe(true);
+  });
+
+  it("are picked up when the worker checks the PR, even if their webhook came first or never came", async () => {
+    fake.world.comments.push({ fullName: "acme/uploader", number: 3, body: QUESTION, id: 4242, author: "alice" });
+    fake.world.comments.push({ fullName: "acme/uploader", number: 3, body: "Question for owner: me too", id: 4243, author: "bob" });
+    await runChecks(db, { gh: fake.gh, scanner: { scan: async () => [] } }, { repoId, prNumber: 3 });
+    await runChecks(db, { gh: fake.gh, scanner: { scan: async () => [] } }, { repoId, prNumber: 3 });
+    const open = await openQuestionsFor(db, taskId);
+    expect(open.map((q) => q.githubCommentId)).toEqual([4242]);
   });
 });

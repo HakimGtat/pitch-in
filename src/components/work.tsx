@@ -184,7 +184,7 @@ export function OwnerQueue({
       <p className="mt-1 text-sm text-stone-600">PRs on your tasks. Nothing expires while you decide.</p>
       <ul className="mt-2 divide-y divide-stone-100">
         {waiting.map((w) => (
-          <li key={`q-${w.taskId}-${w.prNumber}`} className="py-2 text-sm">
+          <li key={`q-${w.questionId}`} className="py-2 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Link href={`/tasks/${w.taskId}`} className="font-medium hover:underline">
                 <span className="mr-2 font-mono text-xs text-stone-500">{taskRef(w.taskId)}</span>

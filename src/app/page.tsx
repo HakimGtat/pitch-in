@@ -148,7 +148,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
                   {t.title}
                 </Link>
                 <span className="text-stone-600">
-                  Yours until <LocalTime value={t.holder!.expiresAt} />
+                  {t.hasOpenPr ? (
+                    "PR open: the owner has it from here"
+                  ) : (
+                    <>
+                      Yours until <LocalTime value={t.holder!.expiresAt} />
+                    </>
+                  )}
                 </span>
               </li>
             ))}

@@ -14,7 +14,8 @@ import { loadTaskView, OPEN_SUBMISSION } from "./views";
 // and the question counts as answered. Nothing here posts to GitHub, and
 // nothing asks the contributor to come back.
 
-export const QUESTION_PREFIX = /^\s*\**\s*Question for owner\s*:/i;
+// Allows markdown around it: **Question for owner:**, **Question for owner**:, > Question for owner:
+export const QUESTION_PREFIX = /^\s*(?:>\s*)?[*_]*\s*Question for owner\s*[*_]*\s*:/i;
 
 export const isQuestion = (body: string | null | undefined) => QUESTION_PREFIX.test(body ?? "");
 
@@ -89,7 +90,7 @@ export async function openQuestionsFor(db: Db, taskId: number): Promise<(Questio
   return rows.map((r) => ({ ...r.question, prNumber: r.prNumber }));
 }
 
-export type WaitingItem = { taskId: number; title: string; prNumber: number; repoFullName: string; question: string };
+export type WaitingItem = { questionId: number; taskId: number; title: string; prNumber: number; repoFullName: string; question: string };
 
 /** The owner's tasks waiting on them: an open question on one of their PRs. */
 export async function loadWaitingOnOwner(db: Db, ownerId: number): Promise<WaitingItem[]> {
@@ -109,6 +110,7 @@ export async function loadWaitingOnOwner(db: Db, ownerId: number): Promise<Waiti
     )
     .orderBy(asc(questions.askedAt));
   return rows.map((r) => ({
+    questionId: r.question.id,
     taskId: r.task.id,
     title: r.task.title,
     prNumber: r.prNumber,
