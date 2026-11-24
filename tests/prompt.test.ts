@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildPrompt,
   GUIDED_STEPS,
+  isLongLink,
+  LONGEST_TESTED_LINK,
   parseTaskRef,
   prTemplate,
   startInClaudeUrl,
@@ -34,13 +36,23 @@ describe("task references", () => {
 });
 
 describe("the PR template", () => {
-  it("starts with Task: <id> and has the six sections, with the brief's criteria to tick", () => {
+  it("starts with Task: <id> and has the six sections from plan.md, in order", () => {
     const t = prTemplate("PI-12", ["Empty files are rejected with a 400 error"]);
     expect(t.split("\n")[0]).toBe("Task: PI-12");
-    for (const s of ["Summary", "Files changed", "Acceptance criteria", "How it was tested", "Risks or notes", "Agent"]) {
-      expect(t).toContain(`## ${s}`);
-    }
-    expect(t).toContain("- [ ] Empty files are rejected with a 400 error");
+    const sections = [...t.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
+    expect(sections).toEqual(["Summary", "Acceptance criteria", "Where to look", "How it was tested", "Not done or assumed", "Agent"]);
+  });
+
+  it("lists every criterion word for word with a place for its evidence pointer", () => {
+    const t = prTemplate("PI-12", ["Empty files are rejected with a 400 error", "All existing tests pass"]);
+    expect(t).toContain("- [ ] Empty files are rejected with a 400 error -> <file:line>");
+    expect(t).toContain("- [ ] All existing tests pass -> <file:line>");
+  });
+
+  it("leaves out what GitHub already shows", () => {
+    const t = prTemplate("PI-12", ["x"]);
+    expect(t).not.toContain("Files changed");
+    expect(t).not.toContain("Risks or notes");
   });
 });
 
@@ -95,6 +107,53 @@ describe("buildPrompt", () => {
     );
     expect(p).toContain("Deliver the work as files in this repo");
     expect(p).toContain("There's no test command for this task");
+  });
+});
+
+describe("the contributor rules", () => {
+  const p = buildPrompt(input());
+
+  it("put thoroughness over economy: read what it needs, thorough tests, the full suite", () => {
+    expect(p).toContain("Be thorough: getting this right matters more than finishing fast");
+    expect(p).toContain("Read as much of the repo as you need");
+    expect(p).toContain("write thorough tests");
+    expect(p).toContain("run the full test suite");
+    expect(p).toContain("not only the brief's test command");
+  });
+
+  it("ask for a second, independent review pass before the PR", () => {
+    expect(p).toContain("Before you open the PR, review your own diff a second time, independently, against every acceptance criterion");
+    expect(p).toContain("a fresh subagent");
+  });
+
+  it("prefer an assumption, and ask the owner on the PR only when a wrong guess would waste the run", () => {
+    expect(p).toContain('note it under "Not done or assumed" and carry on');
+    expect(p).toContain("only when a wrong guess would waste the whole run");
+    expect(p).toContain('a comment starting "Question for owner:"');
+  });
+
+  it("ask for word-for-word criteria with file:line pointers, and nothing GitHub already shows", () => {
+    expect(p).toContain("Copy every acceptance criterion word for word");
+    expect(p).toContain('file:line ("CI" for tests passing in CI)');
+    expect(p).toContain("Leave out the files changed, line counts and CI results");
+    expect(p).toContain(prTemplate("PI-12", input().task.acceptance));
+  });
+
+  it("keep the rules that were already there", () => {
+    expect(p).toContain("Touch only the allowed paths in the brief");
+    expect(p).toContain("Don't run commands other than the repo's own setup and test commands");
+    expect(p).toContain("from a branch in this repo (not a fork)");
+  });
+});
+
+describe("long links", () => {
+  it("are flagged above the longest link we've seen work", () => {
+    expect(isLongLink("x".repeat(LONGEST_TESTED_LINK))).toBe(false);
+    expect(isLongLink("x".repeat(LONGEST_TESTED_LINK + 1))).toBe(true);
+  });
+
+  it("aren't hit by a typical task", () => {
+    expect(isLongLink(startInClaudeUrl(buildPrompt(input()), "acme/uploader"))).toBe(false);
   });
 });
 

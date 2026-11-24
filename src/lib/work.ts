@@ -2,11 +2,22 @@ import { and, eq, inArray, max, notInArray } from "drizzle-orm";
 import { getUser, PermissionError } from "./admin";
 import { endAdoptions, syncMilestoneStatus } from "./adoption";
 import { writeAudit } from "./audit";
-import { checkBrief, checkText, type BriefCheck, type BriefDraft } from "./brief";
+import {
+  checkBrief,
+  checkMilestoneInput,
+  checkProjectInput,
+  type BriefCheck,
+  type BriefDraft,
+  type FormFlag,
+  type MilestoneInput,
+  type ProjectInput,
+  type RepoTree,
+} from "./brief";
 import type { Db } from "./db/client";
 import { adoptions, milestones, projects, repos, tasks, type Repo, type User } from "./db/schema";
 import type { RepoGitHub } from "./github/repos";
 import { canCloseOrRelease, canManageOwnWork, canPostTask, type Decision } from "./permissions";
+import { checkImport, parseImport, type ImportPreview } from "./plan-import";
 import { taskRef } from "./prompt";
 import { loadTaskView, loadTaskViews } from "./views";
 
@@ -35,15 +46,19 @@ async function openProject(db: Db, projectId: number) {
   return project;
 }
 
-/** Runs the brief checker against the repo as it is on GitHub now. */
-async function checkAgainstRepo(gh: RepoGitHub, repo: Repo, draft: BriefDraft): Promise<BriefCheck> {
-  let tree = null;
+/** Every file on the default branch, or null when GitHub can't be read just now. */
+async function readTree(gh: RepoGitHub, repo: Repo): Promise<RepoTree | null> {
   try {
-    tree = await gh.tree(repo.fullName, repo.defaultBranch);
+    return await gh.tree(repo.fullName, repo.defaultBranch);
   } catch (err) {
     console.error(`[brief] Couldn't read ${repo.fullName} from GitHub:`, err);
+    return null;
   }
-  return checkBrief(draft, { repoFullName: repo.fullName, settings: repo.settings, tree });
+}
+
+/** Runs the brief checker against the repo as it is on GitHub now. */
+async function checkAgainstRepo(gh: RepoGitHub, repo: Repo, draft: BriefDraft): Promise<BriefCheck> {
+  return checkBrief(draft, { repoFullName: repo.fullName, settings: repo.settings, tree: await readTree(gh, repo) });
 }
 
 export type BriefResult =
@@ -195,29 +210,8 @@ export async function closeTask(db: Db, actorId: number, taskId: number, now: Da
 
 // ---------- projects ----------
 
-export type MilestoneInput = { title: string; goal: string };
-export type ProjectInput = { title: string; goal: string; milestones: MilestoneInput[] };
-export type FormFlag = { field: string; message: string };
-
-export function checkProjectInput(input: ProjectInput, repoFullName: string): FormFlag[] {
-  const flags: FormFlag[] = [];
-  if (!input.title.trim()) flags.push({ field: "title", message: "Give the project a title." });
-  else if (input.title.length > 100) flags.push({ field: "title", message: "Keep the title under 100 characters." });
-  if (!input.goal.trim()) flags.push({ field: "goal", message: "Give the project a short goal: what it's for, in a sentence or two." });
-  for (const problem of checkText(`${input.title}\n${input.goal}`, repoFullName)) flags.push({ field: "goal", message: problem });
-  if (input.milestones.length === 0) flags.push({ field: "milestones", message: "Add at least one milestone." });
-  input.milestones.forEach((m, i) => flags.push(...checkMilestoneInput(m, repoFullName, `milestone${i}`)));
-  return flags;
-}
-
-export function checkMilestoneInput(m: MilestoneInput, repoFullName: string, field = "milestone"): FormFlag[] {
-  const flags: FormFlag[] = [];
-  const label = field.startsWith("milestone") && field !== "milestone" ? `Milestone ${Number(field.slice(9)) + 1}` : "The milestone";
-  if (!m.title.trim()) flags.push({ field, message: `${label} needs a title.` });
-  if (!m.goal.trim()) flags.push({ field, message: `${label} needs a goal.` });
-  for (const problem of checkText(`${m.title}\n${m.goal}`, repoFullName)) flags.push({ field, message: `${label}: ${problem}` });
-  return flags;
-}
+export { checkMilestoneInput, checkProjectInput };
+export type { FormFlag, MilestoneInput, ProjectInput };
 
 export type ProjectResult = { ok: true; projectId: number } | { ok: false; flags: FormFlag[] };
 
@@ -264,6 +258,88 @@ export async function createProject(
       details: { repo: repo.fullName, title: input.title.trim(), milestones: input.milestones.length },
     });
     return { ok: true as const, projectId: project.id };
+  });
+}
+
+// ---------- plan import ----------
+
+export type ImportOutcome =
+  | { kind: "posted"; projectId: number; taskIds: number[] }
+  | { kind: "unparsed"; errors: string[] }
+  | { kind: "preview"; preview: ImportPreview };
+
+/**
+ * Checks a pasted plan and, when `post` is set and nothing blocks, posts the
+ * project, its milestones and tasks in one go. The preview is never trusted:
+ * every post parses and checks the JSON again, against the repo as it is now.
+ */
+export async function importPlan(
+  db: Db,
+  gh: RepoGitHub,
+  actorId: number,
+  repoId: number,
+  text: string,
+  opts: { post: boolean; acknowledged: boolean },
+  now: Date = new Date(),
+): Promise<ImportOutcome> {
+  const actor = await getUser(db, actorId);
+  const repo = await connectedRepo(db, repoId);
+  enforce(canPostTask(actor, await freshAccess(gh, repo, actor)));
+
+  const parsed = parseImport(text);
+  if (!parsed.ok) return { kind: "unparsed", errors: parsed.errors };
+  const preview = checkImport(parsed.plan, { repoFullName: repo.fullName, settings: repo.settings, tree: await readTree(gh, repo) });
+  if (!opts.post || preview.errors > 0 || (preview.warnings > 0 && !opts.acknowledged)) return { kind: "preview", preview };
+
+  return db.transaction(async (tx) => {
+    const [project] = await tx
+      .insert(projects)
+      .values({ repoId: repo.id, ownerId: actor.id, title: preview.project.title, goal: preview.project.goal, createdAt: now, updatedAt: now })
+      .returning({ id: projects.id });
+
+    const taskIds: number[] = [];
+    for (const [i, m] of preview.milestones.entries()) {
+      const [milestone] = await tx
+        .insert(milestones)
+        .values({ projectId: project.id, position: i + 1, title: m.title, goal: m.goal, createdAt: now, updatedAt: now })
+        .returning({ id: milestones.id });
+      for (const [j, t] of m.tasks.entries()) {
+        const [row] = await tx
+          .insert(tasks)
+          .values({
+            repoId: repo.id,
+            projectId: project.id,
+            milestoneId: milestone.id,
+            position: j + 1,
+            ownerId: actor.id,
+            title: t.draft.title,
+            kind: t.draft.kind,
+            brief: t.draft.brief,
+            briefMd: t.markdown,
+            sizeTier: t.draft.sizeTier!,
+            allowedPaths: t.draft.allowedPaths,
+            status: "open",
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning({ id: tasks.id });
+        taskIds.push(row.id);
+      }
+    }
+
+    await writeAudit(tx, {
+      actorId: actor.id,
+      action: "project.imported",
+      target: `project ${project.id}`,
+      details: {
+        repo: repo.fullName,
+        title: preview.project.title,
+        milestones: preview.milestones.length,
+        tasks: taskIds.map(taskRef),
+        warnings: preview.warnings,
+      },
+    });
+    return { kind: "posted" as const, projectId: project.id, taskIds };
   });
 }
 

@@ -83,7 +83,8 @@ export function BriefView({
 }: {
   brief: TaskBrief;
   kind: TaskKind;
-  sizeTier: SizeTier;
+  /** Null only in an import preview, before the estimate is filled in. */
+  sizeTier: SizeTier | null;
   allowedPaths: string[];
 }) {
   const none = brief.testCommand.trim().toLowerCase() === "none";
@@ -147,7 +148,7 @@ export function BriefView({
       </Field>
       <Field label="Estimate">
         <span className="flex items-center gap-2">
-          <TierBadge tier={sizeTier} cap />
+          {sizeTier ? <TierBadge tier={sizeTier} cap /> : <span className="text-red-700">Not set</span>}
           <KindBadge kind={kind} />
         </span>
       </Field>

@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "./db/client";
 import { milestones, projects, repos, tasks } from "./db/schema";
-import { buildPrompt, startInClaudeUrl } from "./prompt";
+import { buildPrompt, isLongLink, startInClaudeUrl } from "./prompt";
 import { loadTaskViews, type FullTaskView } from "./views";
 
 /** The Start in Claude prompt and link for one task, with its project and milestone goals. */
-export async function promptForTask(db: Db, task: FullTaskView, now: Date): Promise<{ prompt: string; url: string }> {
+export async function promptForTask(db: Db, task: FullTaskView, now: Date): Promise<{ prompt: string; url: string; long: boolean }> {
   const [repo] = await db.select().from(repos).where(eq(repos.id, task.repoId));
   const [project] = task.projectId ? await db.select().from(projects).where(eq(projects.id, task.projectId)) : [];
   const [milestone] = task.milestoneId ? await db.select().from(milestones).where(eq(milestones.id, task.milestoneId)) : [];
@@ -32,5 +32,6 @@ export async function promptForTask(db: Db, task: FullTaskView, now: Date): Prom
     project: project ? { title: project.title, goal: project.goal } : null,
     milestone: milestone ? { position: milestone.position, title: milestone.title, goal: milestone.goal, earlier } : null,
   });
-  return { prompt, url: startInClaudeUrl(prompt, repo.fullName) };
+  const url = startInClaudeUrl(prompt, repo.fullName);
+  return { prompt, url, long: isLongLink(url) };
 }

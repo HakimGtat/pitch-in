@@ -169,6 +169,14 @@ export default async function TaskPage({
                   <a href={start.url} target="_blank" rel="noopener noreferrer" className={`${buttonClass} mt-4 w-full`}>
                     Start in Claude
                   </a>
+                  {start.long ? (
+                    <div className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                      <p>This task is long. If Claude opens with an empty message box, copy the task and paste it there.</p>
+                      <div className="mt-2">
+                        <CopyButton text={start.prompt} label="Copy the task" />
+                      </div>
+                    </div>
+                  ) : null}
                   <button type="button" disabled className={`${secondaryButtonClass} mt-2 w-full cursor-not-allowed opacity-60`}>
                     Check for my PR
                   </button>
@@ -185,6 +193,12 @@ export default async function TaskPage({
                   <a href={start.url} target="_blank" rel="noopener noreferrer" className={`${buttonClass} mt-4 w-full`}>
                     Start in Claude
                   </a>
+                  {start.long ? (
+                    <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                      This link is longer than any we&apos;ve tested ({start.url.length.toLocaleString("en-US")} characters). If Claude
+                      opens without the task filled in, copy the brief and paste it into the session.
+                    </p>
+                  ) : null}
                   <div className="mt-2 flex gap-2">
                     <CopyButton text={start.prompt} label="Copy brief" />
                     <a href={`/tasks/${task.id}/brief.md`} className={secondaryButtonClass}>

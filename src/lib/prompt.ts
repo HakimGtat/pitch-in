@@ -13,24 +13,32 @@ export function parseTaskRef(value: string): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * The PR body from plan.md ("Review-friendly PRs"). Every criterion word for
+ * word with a pointer to where it's met, so the owner's agent checks lines
+ * instead of searching. Files changed, line counts and CI results are left
+ * out: GitHub shows them for free.
+ */
 export function prTemplate(ref: string, acceptance: string[]): string {
-  const criteria = acceptance.length ? acceptance.map((c) => `- [ ] ${c}`).join("\n") : "- [ ] <each acceptance criterion>";
+  const criteria = (acceptance.length ? acceptance : ["<each acceptance criterion>"])
+    .map((c) => `- [ ] ${c} -> <file:line>`)
+    .join("\n");
   return `Task: ${ref}
 
 ## Summary
 - <what changed, three bullets at most>
 
-## Files changed
-- <path>: <what changed>
-
 ## Acceptance criteria
 ${criteria}
 
-## How it was tested
-<the command you ran and its result>
+## Where to look
+- <file:lines>: <what to read first, and why>
 
-## Risks or notes
-<anything the reviewer should look at closely>
+## How it was tested
+<each command you ran and its result>
+
+## Not done or assumed
+- <what you left out and every assumption you made, or "Nothing">
 
 ## Agent
 <agent and model used>`;
@@ -84,28 +92,43 @@ export function buildPrompt({ task, repo, project, milestone }: PromptInput): st
 
   lines.push(task.briefMd.trim());
 
+  // Contributor rules (plan.md, "How the brief reaches the agent"): only the
+  // owner's usage is kept low, so the contributor's agent is asked to be
+  // thorough and to review its own work twice.
   const rules = [
+    "- Be thorough: getting this right matters more than finishing fast. Read as much of the repo as you need, write thorough tests, and run the full test suite (for docs, every lint and link check), not only the brief's test command.",
     `- Off-limits paths (never change these): ${repo.offLimitsPaths.join(", ") || "none"}`,
     "- Touch only the allowed paths in the brief. No unrelated reformatting or renaming.",
-    `- Stay under ${formatLines(LINE_CAP[task.sizeTier])} lines changed (lines added plus lines removed).`,
+    `- Stay under ${formatLines(LINE_CAP[task.sizeTier])} lines changed (lines added plus lines removed, tests included).`,
   ];
   if (task.kind === "other") {
     rules.push("- Deliver the work as files in this repo (Markdown for writing and research), at the path named under Output.");
   }
   rules.push(
     noTest
-      ? "- There's no test command for this task. Check the result against every acceptance criterion before you finish."
-      : "- Run the test command and make sure it passes before you finish.",
+      ? "- There's no test command for this task, so check the result against every acceptance criterion yourself."
+      : "- The test command and the full suite must pass before you finish.",
     "- Don't run commands other than the repo's own setup and test commands.",
+    '- If something is unclear, take the likeliest reading, note it under "Not done or assumed" and carry on. Ask only when a wrong guess would waste the whole run: open the PR as a draft, add a comment starting "Question for owner:" with one question, the options you see and the one you\'ll take by default, then stop and wait for the answer there.',
+    "- Before you open the PR, review your own diff a second time, independently, against every acceptance criterion, for example with a fresh subagent asked to find problems. Fix what it finds and run the tests again.",
   );
-  lines.push(`Rules:\n${rules.join("\n")}`);
+  lines.push(`How to work:\n${rules.join("\n")}`);
 
   lines.push(
-    `When you're done, open a pull request from a branch in this repo (not a fork). The PR body must follow this template, starting with the line \`Task: ${ref}\`, with every section filled in:\n\n${prTemplate(ref, task.acceptance)}`,
+    `When you're done, open a pull request from a branch in this repo (not a fork), with this template as its body, starting with the line \`Task: ${ref}\`. Copy every acceptance criterion word for word, tick it, and point to where it's met as file:line ("CI" for tests passing in CI). Leave out the files changed, line counts and CI results: GitHub shows those.\n\n${prTemplate(ref, task.acceptance)}`,
   );
 
   return lines.join("\n\n") + "\n";
 }
+
+/**
+ * The longest Start in Claude link we've seen fill in the prompt. Past it the
+ * task page points to Copy brief as well. The prototype proved about 3,600
+ * characters; raised only after a longer link was checked by hand.
+ */
+export const LONGEST_TESTED_LINK = 3_600;
+
+export const isLongLink = (url: string) => url.length > LONGEST_TESTED_LINK;
 
 // Spaces as %20, not "+": the same encoding the prototype proved works.
 const enc = (s: string) =>

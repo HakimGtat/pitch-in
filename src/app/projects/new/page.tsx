@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { createProjectAction } from "@/app/work-actions";
+import { createProjectAction, importPlanAction } from "@/app/work-actions";
+import { PlanImport } from "@/components/plan-import";
 import { ProjectForm } from "@/components/project-form";
 import { Card, Notice, PageTitle } from "@/components/ui";
 import { requireUser } from "@/lib/auth/current-user";
@@ -19,12 +20,13 @@ export default async function NewProject({ searchParams }: { searchParams: Promi
     console.error("[projects/new]", err);
     trouble = "Pitch In couldn't check your repo access on GitHub just now. Try again in a minute.";
   }
+  const initialRepoId = writable.find((r) => r.id === Number(repo))?.id ?? null;
 
   return (
     <div className="mx-auto max-w-3xl">
       <PageTitle
         title="Post a project"
-        intro="For work bigger than one Large task: a project with ordered milestones, each split into tasks. Every task still ends in one PR you review."
+        intro="For work bigger than one Large task: a project with ordered milestones, each split into tasks. Plan it with your own Claude session, paste the result, and post it all at once. Every task still ends in one PR you review."
       />
       {trouble ? <Notice kind="error">{trouble}</Notice> : null}
       {!trouble && writable.length === 0 ? (
@@ -39,13 +41,34 @@ export default async function NewProject({ searchParams }: { searchParams: Promi
           </p>
         </Card>
       ) : writable.length ? (
-        <Card>
-          <ProjectForm
-            action={createProjectAction}
-            repos={writable.map((r) => ({ id: r.id, fullName: r.fullName }))}
-            initialRepoId={writable.find((r) => r.id === Number(repo))?.id ?? null}
+        <div className="space-y-6">
+          <PlanImport
+            action={importPlanAction}
+            repos={writable.map((r) => ({
+              id: r.id,
+              fullName: r.fullName,
+              largestTier: r.settings.largestTier,
+              offLimitsPaths: r.settings.offLimitsPaths,
+              hasProjectBrief: Boolean(r.projectBrief),
+            }))}
+            initialRepoId={initialRepoId}
           />
-        </Card>
+          <details className="group rounded-xl border border-stone-200 bg-white shadow-sm">
+            <summary className="cursor-pointer px-6 py-4 font-semibold">
+              Or set it up by hand
+              <span className="mt-0.5 block text-sm font-normal text-stone-600">
+                Post the project and its milestones here, then add each task through the task form.
+              </span>
+            </summary>
+            <div className="border-t border-stone-200 p-6">
+              <ProjectForm
+                action={createProjectAction}
+                repos={writable.map((r) => ({ id: r.id, fullName: r.fullName }))}
+                initialRepoId={initialRepoId}
+              />
+            </div>
+          </details>
+        </div>
       ) : null}
     </div>
   );

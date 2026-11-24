@@ -181,6 +181,32 @@ export function checkText(text: string, repoFullName: string): string[] {
   return problems;
 }
 
+// ---------- project and milestone goals (they go into every task's prompt) ----------
+
+export type MilestoneInput = { title: string; goal: string };
+export type ProjectInput = { title: string; goal: string; milestones: MilestoneInput[] };
+export type FormFlag = { field: string; message: string };
+
+export function checkProjectInput(input: ProjectInput, repoFullName: string): FormFlag[] {
+  const flags: FormFlag[] = [];
+  if (!input.title.trim()) flags.push({ field: "title", message: "Give the project a title." });
+  else if (input.title.length > 100) flags.push({ field: "title", message: "Keep the title under 100 characters." });
+  if (!input.goal.trim()) flags.push({ field: "goal", message: "Give the project a short goal: what it's for, in a sentence or two." });
+  for (const problem of checkText(`${input.title}\n${input.goal}`, repoFullName)) flags.push({ field: "goal", message: problem });
+  if (input.milestones.length === 0) flags.push({ field: "milestones", message: "Add at least one milestone." });
+  input.milestones.forEach((m, i) => flags.push(...checkMilestoneInput(m, repoFullName, `milestone${i}`)));
+  return flags;
+}
+
+export function checkMilestoneInput(m: MilestoneInput, repoFullName: string, field = "milestone"): FormFlag[] {
+  const flags: FormFlag[] = [];
+  const label = field.startsWith("milestone") && field !== "milestone" ? `Milestone ${Number(field.slice(9)) + 1}` : "The milestone";
+  if (!m.title.trim()) flags.push({ field, message: `${label} needs a title.` });
+  if (!m.goal.trim()) flags.push({ field, message: `${label} needs a goal.` });
+  for (const problem of checkText(`${m.title}\n${m.goal}`, repoFullName)) flags.push({ field, message: `${label}: ${problem}` });
+  return flags;
+}
+
 // ---------- the checker ----------
 
 const CATCH_ALL = /^(?:\*\*|\*|\*\*\/\*|\.|\.\/)$/;

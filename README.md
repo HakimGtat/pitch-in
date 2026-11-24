@@ -8,7 +8,7 @@ The full plan is in [plan.md](plan.md).
 
 ## Status
 
-Milestones 1 (foundation) and 2 (projects, tasks and briefs) are built:
+Milestones 1 (foundation), 2 (projects, tasks and briefs) and 3 (plan import) are built:
 
 - `docker compose` with the Next.js web app, the worker, the smee webhook relay and Postgres, plus migrations for the data model
 - GitHub sign-in limited to one GitHub team, re-checked at every sign-in
@@ -19,8 +19,11 @@ Milestones 1 (foundation) and 2 (projects, tasks and briefs) are built:
 - The board, filtered by how much each person wants to take on and grouped by project
 - Adopting a task or a whole milestone with a 48-hour lock computed on read, handing back, and releasing
 - Start in Claude (a pre-filled Claude Code on the web link), Copy brief, a `.md` download, and the Guided walkthrough
+- Plan in Claude on "Post a project": a fixed planning prompt (link or copy) that has the owner's own agent split one section of a plan file into milestones and task briefs, answering in a JSON import format
+- Plan import: paste the agent's JSON, the brief checker runs on every task, one preview shows every flag, and the project, its milestones and tasks post together
+- Contributor rules in the Start in Claude prompt: thoroughness over economy, a second review pass, and the PR template with an evidence pointer for every acceptance criterion
 
-Next is Milestone 3: planning a project with the owner's agent and importing it, so work can be posted from a plan file. PR linking, the seven checks, review with the owner's agent, questions between agents and the unreviewed-merge alert come in Milestone 4.
+Next is Milestone 4: PR linking, the seven checks, review with the owner's agent, questions between agents and the unreviewed-merge alert.
 
 ## Running it
 

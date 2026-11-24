@@ -2,6 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { adoptMilestone, handBack } from "@/lib/adoption";
 import { checkBrief, emptyBrief, type BriefDraft } from "@/lib/brief";
 import { createDb } from "@/lib/db/client";
+import { promptForTask } from "@/lib/start";
+import { loadTaskView } from "@/lib/views";
 import { adoptions, repos, tasks, users } from "@/lib/db/schema";
 
 // SAMPLE DATA helper for live checks with one GitHub account. It creates a
@@ -10,8 +12,11 @@ import { adoptions, repos, tasks, users } from "@/lib/db/schema";
 //   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data adopt <milestoneId>
 //   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data hand-back <milestoneId>
 //   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data post-task <repoId>
+//   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data start-link <taskId>
 //
-// adopt and hand-back go through the same code the site uses. post-task writes
+// adopt and hand-back go through the same code the site uses. start-link
+// prints the Start in Claude link the sample user's task page would show, built
+// by the same code, for a task they hold. post-task writes
 // a sample single task owned by the sample user straight to the database,
 // skipping the GitHub write-access check (the sample user has no GitHub
 // account), so a real account can take it on and try Start in Claude.
@@ -30,8 +35,8 @@ async function main() {
   }
   const [command, idArg] = args.filter((a) => a !== "--sample-data");
   const id = Number(idArg);
-  if (!["adopt", "hand-back", "post-task"].includes(command) || !Number.isInteger(id)) {
-    console.error("Usage: sample-adopt.ts --sample-data adopt|hand-back <milestoneId> | post-task <repoId>");
+  if (!["adopt", "hand-back", "post-task", "start-link"].includes(command) || !Number.isInteger(id)) {
+    console.error("Usage: sample-adopt.ts --sample-data adopt|hand-back <milestoneId> | post-task <repoId> | start-link <taskId>");
     process.exit(1);
   }
   const url = process.env.DATABASE_URL;
@@ -92,6 +97,14 @@ async function main() {
         })
         .returning({ id: tasks.id });
       console.log(`@${sample.handle} posted PI-${task.id} on ${repo.fullName} (sample data).`);
+    } else if (command === "start-link") {
+      const now = new Date();
+      const task = await loadTaskView(db, id, now);
+      if (!task) throw new Error("No task with that id.");
+      if (task.holder?.userId !== sample.id) throw new Error("The sample user doesn't hold that task. Adopt its milestone first.");
+      const { url, long } = await promptForTask(db, task, now);
+      console.log(url);
+      console.error(`${url.length} characters${long ? ", longer than any link tested so far" : ""}.`);
     } else if (command === "adopt") {
       const ids = await adoptMilestone(db, sample.id, id);
       console.log(`@${sample.handle} adopted milestone ${id}: tasks ${ids.map((i) => `PI-${i}`).join(", ")}.`);

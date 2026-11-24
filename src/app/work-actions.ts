@@ -11,6 +11,7 @@ import { draftFromValues, valuesFromForm, type TaskFormState } from "@/lib/forms
 import { createRepoGitHub } from "@/lib/github/app";
 import { splitList } from "@/lib/glob";
 import { connectRepo, parseRepoSettings, refreshRepo, removeRepo, updateRepoSettings } from "@/lib/repos";
+import { fixRequest, previewFlagLines, type ImportPreview } from "@/lib/plan-import";
 import { parseTakeOn } from "@/lib/sizing";
 import {
   addMilestone,
@@ -18,6 +19,7 @@ import {
   closeTask,
   createProject,
   editTask,
+  importPlan,
   markProjectDone,
   postTask,
   type FormFlag,
@@ -255,6 +257,57 @@ export async function createProjectAction(prev: ProjectFormState, formData: Form
   }
   revalidatePath("/", "layout");
   redirect(`/projects/${projectId}?notice=${encodeURIComponent("Project posted. Add tasks to its milestones next.")}`);
+}
+
+// ---------- plan import ----------
+
+export type ImportFormState = {
+  /** The pasted text this result is for, so the form can tell when it's been edited since. */
+  checkedText: string;
+  checkedRepoId: number;
+  result:
+    | { kind: "unparsed"; errors: string[]; fix: string }
+    | { kind: "preview"; preview: ImportPreview; flags: { errors: string[]; warnings: string[] }; fix: string }
+    | null;
+  error: string | null;
+};
+
+export async function importPlanAction(prev: ImportFormState, formData: FormData): Promise<ImportFormState> {
+  const user = await requireUser();
+  const repoId = num(formData, "repoId");
+  const text = String(formData.get("text") ?? "");
+  const intent = String(formData.get("intent") ?? "check");
+  if (!repoId) return { checkedText: text, checkedRepoId: 0, result: null, error: "Pick the repo this project lives in." };
+
+  let projectId: number;
+  let count: number;
+  try {
+    const outcome = await importPlan(getDb(), gh(), user.id, repoId, text, {
+      post: intent === "post" || intent === "post-anyway",
+      acknowledged: intent === "post-anyway",
+    });
+    if (outcome.kind === "unparsed") {
+      return { checkedText: text, checkedRepoId: repoId, result: { ...outcome, fix: fixRequest(outcome.errors, []) }, error: null };
+    }
+    if (outcome.kind === "preview") {
+      const flags = previewFlagLines(outcome.preview);
+      return {
+        checkedText: text,
+        checkedRepoId: repoId,
+        result: { kind: "preview", preview: outcome.preview, flags, fix: fixRequest(flags.errors, flags.warnings) },
+        error: null,
+      };
+    }
+    projectId = outcome.projectId;
+    count = outcome.taskIds.length;
+  } catch (err) {
+    if (!(err instanceof PermissionError)) console.error("[import]", err);
+    return { ...prev, error: err instanceof PermissionError ? err.message : githubTrouble(err) };
+  }
+  revalidatePath("/", "layout");
+  redirect(
+    `/projects/${projectId}?notice=${encodeURIComponent(`Project posted with ${count} ${count === 1 ? "task" : "tasks"}. It's on the board now.`)}`,
+  );
 }
 
 export async function addMilestoneAction(formData: FormData) {
