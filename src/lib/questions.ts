@@ -3,6 +3,7 @@ import { writeAudit } from "./audit";
 import type { Db } from "./db/client";
 import { questions, repos, submissions, tasks, type Question } from "./db/schema";
 import { isLongLink, startInClaudeUrl, taskRef } from "./prompt";
+import { untrusted } from "./review-packet";
 import { loadTaskView, OPEN_SUBMISSION } from "./views";
 
 // Questions for the owner (plan.md, "Questions for the owner"). When a wrong
@@ -135,7 +136,7 @@ export function buildAnswerPrompt(input: {
 }): string {
   return [
     `A coworker's agent working on ${input.ref} in ${input.repoFullName} stopped and left you a question on its draft PR: ${input.prUrl}. Its run has ended, so nobody is waiting for a reply.`,
-    `The question, as it wrote it:\n\n${input.question.trim()}`,
+    untrusted("question", input.question),
     [
       "Help me settle it in one of two ways:",
       `- Finish the work: if the answer is clear and the rest is small, do it yourself in this session on the PR's branch (${input.headRef}) if this session can push to it, otherwise as a small PR into that branch. Then mark the PR Ready for review and I'll merge it.`,

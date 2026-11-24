@@ -1,4 +1,5 @@
 import { isLongLink, startInClaudeUrl } from "./prompt";
+import { untrusted } from "./review-packet";
 
 // Review in Claude (plan.md, "Review with the owner's agent"): the owner's own
 // session, opened on the PR with the criteria and the review packet, plus
@@ -35,7 +36,7 @@ export function buildReviewPrompt(input: ReviewPromptInput): string {
   ];
   if (input.draft) parts.push("The PR is a draft: mark it Ready for review on GitHub before you merge it.");
   parts.push(`Acceptance criteria:\n${input.acceptance.map((c) => `- ${c}`).join("\n")}`);
-  parts.push(input.packet.trim());
+  parts.push(untrusted("review packet", input.packet));
   return parts.join("\n\n") + "\n";
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildExcerpts } from "@/lib/checks/excerpts";
 import type { StoredChecks } from "@/lib/checks/run";
 import type { CheckResult } from "@/lib/checks/types";
-import { buildReviewPacket, outputPath, packetReady } from "@/lib/review-packet";
+import { buildReviewPacket, fenceFor, outputPath, packetReady } from "@/lib/review-packet";
 
 // Lines 1-30 of src/upload.py are shown as context, with 14-16 added.
 const PATCH = [
@@ -129,5 +129,17 @@ describe("the review packet", () => {
     expect(packetReady(checks({ failed: 1, passed: 6 }))).toBe(false);
     expect(packetReady(checks({ ciPending: true }))).toBe(false);
     expect(packetReady(null)).toBe(false);
+  });
+});
+
+describe("fences in the packet", () => {
+  it("are longer than any backticks in the code they hold", () => {
+    expect(fenceFor("plain")).toBe("```");
+    expect(fenceFor("a ``` b")).toBe("````");
+    const withFence = checks({
+      excerpts: [{ criterion: "Empty files get a 400 error", pointer: "src/upload.py:15", lines: [{ line: 15, kind: "+", text: "```" }] }],
+    });
+    const p = buildReviewPacket(input({ checks: withFence }));
+    expect(p).toContain("````diff\n+  15 | ```\n````");
   });
 });
