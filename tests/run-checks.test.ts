@@ -1,9 +1,9 @@
 import { createHmac } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { adoptTask } from "@/lib/adoption";
 import { emptyBrief } from "@/lib/brief";
-import { CHECKS_JOB, checksJobKey, queueChecks, type StoredChecks } from "@/lib/checks/run";
+import { CHECKS_JOB, checksJobKey, queueChecks, runChecks, type StoredChecks } from "@/lib/checks/run";
 import type { SecretScanner } from "@/lib/checks/secrets";
 import { SITE_CHECK_NAME } from "@/lib/checks/types";
 import type { Db } from "@/lib/db/client";
@@ -203,7 +203,7 @@ describe("running the checks on a linked PR", () => {
     await sendPr(11);
     expect(ours()[0].run).toMatchObject({ status: "in_progress", title: "6 passed, 1 failed, waiting for CI" });
     expect((await db.select().from(submissions))[0].status).toBe("checking");
-    const waiting = await db.select().from(jobs).where(eq(jobs.dedupeKey, `${checksJobKey({ repoId, prNumber: 11 }, "e1")}:wait:1`));
+    const waiting = await db.select().from(jobs).where(like(jobs.dedupeKey, `${checksJobKey({ repoId, prNumber: 11 }, "e1")}:wait@%`));
     expect(waiting).toHaveLength(1);
 
     fake.setCi("acme/uploader", "e1", [{ name: "test", conclusion: "success" }]);
@@ -274,5 +274,34 @@ describe("the checks job", () => {
 
     await queueChecks(db, { repoId, prNumber: 7 }, "def");
     expect(await db.select().from(jobs).where(eq(jobs.type, CHECKS_JOB))).toHaveLength(2);
+  });
+});
+
+describe("waiting for CI", () => {
+  const job = () => ({ repoId, prNumber: 30 });
+  const waitJobs = () => db.select().from(jobs).where(like(jobs.dedupeKey, `${checksJobKey(job(), "w1")}:wait@%`));
+
+  it("queues one follow-up per minute however many events arrive, not parallel chains", async () => {
+    fake.addPull("acme/uploader", { number: 30, author: "alice", body: goodBody(taskId), headSha: "w1" }, goodFiles);
+    fake.setCi("acme/uploader", "w1", [{ name: "test", status: "in_progress", conclusion: null }]);
+    await sendPr(30);
+    const now = new Date();
+    for (let i = 0; i < 3; i++) await runChecks(db, { gh: fake.gh, scanner: noSecrets }, job(), now);
+    expect(await waitJobs()).toHaveLength(1);
+  });
+
+  it("stops waiting an hour after CI was first seen running, and reports it as failing", async () => {
+    fake.addPull("acme/uploader", { number: 30, author: "alice", body: goodBody(taskId), headSha: "w1" }, goodFiles);
+    fake.setCi("acme/uploader", "w1", [{ name: "test", status: "in_progress", conclusion: null }]);
+    const start = new Date();
+    await sendPr(30);
+    // Many quick re-runs don't use the hour up.
+    for (let i = 0; i < 70; i++) await runChecks(db, { gh: fake.gh, scanner: noSecrets }, job(), new Date(start.getTime() + i * 1000));
+    expect((await db.select().from(submissions))[0].status).toBe("checking");
+
+    const out = await runChecks(db, { gh: fake.gh, scanner: noSecrets }, job(), new Date(start.getTime() + 61 * 60_000));
+    expect(out).toMatchObject({ status: "checked", ciPending: false });
+    expect((await db.select().from(submissions))[0].status).toBe("checks_failed");
+    expect(ours().at(-1)?.run).toMatchObject({ status: "completed", conclusion: "failure" });
   });
 });

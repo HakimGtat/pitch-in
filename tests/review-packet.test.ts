@@ -55,7 +55,7 @@ const checks = (over: Partial<StoredChecks> = {}): StoredChecks => ({
   passed: 7,
   failed: 0,
   ciPending: false,
-  ciWaits: 0,
+  ciPendingSince: null,
   pr: { title: "Reject empty uploads", url: "https://github.com/acme/uploader/pull/7", draft: false, body: BODY, headRef: "claude/empty", author: "alice" },
   excerpts: buildExcerpts(BODY, CRITERIA, [{ path: "src/upload.py", additions: 3, deletions: 0, patch: PATCH }]),
   ...over,

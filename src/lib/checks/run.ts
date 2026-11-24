@@ -28,7 +28,11 @@ export type ChecksJob = { repoId: number; prNumber: number };
 
 /** How long to wait for the repo's own CI before checking again, and how many times. */
 export const CI_WAIT_MS = 60_000;
-export const CI_MAX_WAITS = 60;
+export const CI_MAX_WAIT_MS = 60 * 60_000;
+
+/** The follow-up check's key: one per PR, commit and minute, so several events never start parallel chains. */
+export const ciWaitKey = (job: ChecksJob, headSha: string, runAfter: Date) =>
+  `${checksJobKey(job, headSha)}:wait@${Math.ceil(runAfter.getTime() / CI_WAIT_MS)}`;
 
 /** What the worker stores in submissions.check_results. */
 export type StoredChecks = {
@@ -39,7 +43,8 @@ export type StoredChecks = {
   failed: number;
   /** The repo's CI hadn't finished yet; the worker checks again. */
   ciPending: boolean;
-  ciWaits: number;
+  /** When this commit's CI was first seen still running; the wait stops an hour after it. */
+  ciPendingSince: string | null;
   pr: { title: string; url: string; draft: boolean; body: string; headRef: string; author: string };
   /** The changed lines around each criterion's pointer, for the review packet. */
   excerpts: Excerpt[];
@@ -223,9 +228,9 @@ export async function runChecks(
 
   const previous = submission.checkResults as StoredChecks | null;
   const sameSha = previous?.headSha === pr.headSha;
-  const ciWaits = sameSha && previous?.ciPending ? previous.ciWaits + 1 : 0;
+  const ciPendingSince = sameSha && previous?.ciPending && previous.ciPendingSince ? previous.ciPendingSince : now.toISOString();
   const ciRunning = results.some((r) => r.name === "CI" && /still running|no CI results yet/.test(r.detail));
-  const ciPending = ciRunning && ciWaits < CI_MAX_WAITS;
+  const ciPending = ciRunning && now.getTime() - new Date(ciPendingSince).getTime() < CI_MAX_WAIT_MS;
   const failed = results.filter((r) => !r.passed).length;
 
   const stored: StoredChecks = {
@@ -235,7 +240,7 @@ export async function runChecks(
     passed: results.length - failed,
     failed,
     ciPending,
-    ciWaits,
+    ciPendingSince: ciPending ? ciPendingSince : null,
     pr: { title: pr.title, url: pr.url, draft: pr.draft, body: pr.body ?? "", headRef: pr.headRef, author: pr.author },
     excerpts: buildExcerpts(pr.body, task.brief.acceptance, files),
   };
@@ -262,7 +267,7 @@ export async function runChecks(
       .values({
         type: CHECKS_JOB,
         payload: job,
-        dedupeKey: `${checksJobKey(job, pr.headSha)}:wait:${ciWaits + 1}`,
+        dedupeKey: ciWaitKey(job, pr.headSha, new Date(now.getTime() + CI_WAIT_MS)),
         runAfter: new Date(now.getTime() + CI_WAIT_MS),
       })
       .onConflictDoNothing({ target: jobs.dedupeKey });
