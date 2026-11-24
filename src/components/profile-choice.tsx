@@ -1,6 +1,6 @@
 type Option = { value: string; title: string; label: string; description: string };
 
-/** Two radio cards: Developer (yes, AI team) and Guided (no). */
+/** Radio cards, e.g. Developer (has used a coding agent) and Guided (hasn't). */
 export function ProfileChoice({
   name,
   options,
@@ -11,7 +11,7 @@ export function ProfileChoice({
   defaultValue?: string;
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className={`grid gap-3 ${options.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
       {options.map((o) => (
         <label
           key={o.value}
@@ -28,7 +28,7 @@ export function ProfileChoice({
             />
             <span className="font-semibold">{o.title}</span>
           </span>
-          <span className="mt-1 block text-sm font-medium text-brand-800">{o.label}</span>
+          {o.label ? <span className="mt-1 block text-sm font-medium text-brand-800">{o.label}</span> : null}
           <span className="mt-2 block text-sm text-stone-600">{o.description}</span>
         </label>
       ))}
@@ -37,6 +37,6 @@ export function ProfileChoice({
 }
 
 export const DEVELOPER_TEXT =
-  "The full brief, Start in Claude, and Copy brief for any other coding agent.";
+  "The full brief, Start in Claude, and Copy brief for any other agent.";
 export const GUIDED_TEXT =
-  "A step-by-step walkthrough and Start in Claude. Automatic checks and the task owner's review back you up, so you never have to judge the code.";
+  "A step-by-step walkthrough and Start in Claude. Automatic checks and the owner's review back you up, so you never have to judge the result.";

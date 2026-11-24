@@ -7,10 +7,12 @@ import {
   handOverMainAdmin,
   PermissionError,
   setProfile,
+  setTakeOn,
   unblockUser,
 } from "@/lib/admin";
 import { requireAdmin, requireUser } from "@/lib/auth/current-user";
 import { getDb } from "@/lib/db/client";
+import { parseTakeOn } from "@/lib/sizing";
 
 type Profile = "developer" | "guided";
 
@@ -39,11 +41,16 @@ async function adminChange(
 const targetId = (formData: FormData) => Number(formData.get("userId"));
 const handle = (formData: FormData) => String(formData.get("handle") ?? "them");
 
-/** The "Are you on the AI team?" answer. Yes means Developer, No means Guided. */
+/**
+ * The welcome questions. "Have you worked with a coding agent like Claude Code
+ * before?" Yes means Developer, No means Guided. Plus how much they want to take on.
+ */
 export async function answerWelcome(formData: FormData) {
   const user = await requireUser({ allowNoProfile: true });
-  const answer = formData.get("aiTeam");
-  if (answer !== "yes" && answer !== "no") redirect("/welcome?error=1");
+  const answer = formData.get("usedAgent");
+  const takeOn = parseTakeOn(formData.get("takeOn"));
+  if ((answer !== "yes" && answer !== "no") || !takeOn) redirect("/welcome?error=1");
+  await setTakeOn(getDb(), user.id, takeOn);
   await setProfile(getDb(), user.id, user.id, answer === "yes" ? "developer" : "guided");
   revalidatePath("/", "layout");
   redirect("/");

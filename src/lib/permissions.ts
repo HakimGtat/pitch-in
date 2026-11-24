@@ -1,7 +1,8 @@
 // Permission rules. Pure functions so they are easy to test.
-// GitHub is the source of truth: org owners are admins, ai-team members with
-// write access post and review. The site itself only adds the main admin and
-// the block list, and never grants more than GitHub does.
+// GitHub is the source of truth: org owners are admins, people with write
+// access to a repo post and review work on it, repo admins connect it. The site
+// itself only adds the main admin and the block list, and never grants more
+// than GitHub does.
 
 export type Actor = {
   id: number;
@@ -57,15 +58,18 @@ export function canChangeProfile(actor: Actor, target: Actor): Decision {
   return deny("Only admins can change someone else's profile.");
 }
 
-/** What GitHub says about one person and one repo, fetched fresh for each check. */
-export type RepoAccess = { inAiTeam: boolean; hasWriteAccess: boolean };
+/** GitHub's permission for one person on one repo, fetched fresh for each check. */
+export type RepoPermission = "admin" | "maintain" | "write" | "triage" | "read" | "none";
+export type RepoAccess = { permission: RepoPermission };
+
+export const hasWriteAccess = (access: RepoAccess) =>
+  access.permission === "admin" || access.permission === "maintain" || access.permission === "write";
+export const isRepoAdmin = (access: RepoAccess) => access.permission === "admin";
 
 export function canPostTask(actor: Actor, access: RepoAccess): Decision {
-  if (actor.blocked) return deny("Blocked people can't post tasks.");
-  if (!access.inAiTeam)
-    return deny("Posting tasks needs membership in the ai-team GitHub team.");
-  if (!access.hasWriteAccess)
-    return deny("Posting tasks needs write access to this repo on GitHub.");
+  if (actor.blocked) return deny("Blocked people can't post work.");
+  if (!hasWriteAccess(access))
+    return deny("Posting work needs write access to this repo on GitHub.");
   return allow;
 }
 
@@ -77,9 +81,43 @@ export function canReviewTask(
   if (actor.blocked) return deny("Blocked people can't review.");
   if (actor.id !== task.ownerId)
     return deny("Only the task owner reviews its PRs.");
-  if (!access.inAiTeam || !access.hasWriteAccess)
-    return deny(
-      "Reviewing needs ai-team membership and write access to this repo on GitHub.",
-    );
+  if (!hasWriteAccess(access))
+    return deny("Reviewing needs write access to this repo on GitHub.");
   return allow;
+}
+
+export function canConnectRepo(actor: Actor, access: RepoAccess): Decision {
+  if (actor.blocked) return deny("Blocked people can't connect repos.");
+  if (!isRepoAdmin(access))
+    return deny("Connecting a repo needs admin permission on it in GitHub.");
+  return allow;
+}
+
+export function canChangeRepoSettings(actor: Actor, access: RepoAccess): Decision {
+  if (isAdmin(actor) || (!actor.blocked && isRepoAdmin(access))) return allow;
+  return deny("Repo settings are for the repo's admins on GitHub and Pitch In admins.");
+}
+
+export function canRemoveRepo(actor: Actor): Decision {
+  return isAdmin(actor) ? allow : deny("Only admins can remove a repo.");
+}
+
+/** Editing a task, adding milestones or tasks to a project, marking it done. */
+export function canManageOwnWork(
+  actor: Actor,
+  work: { ownerId: number },
+  access: RepoAccess,
+): Decision {
+  if (actor.blocked) return deny("Blocked people can't change work.");
+  if (actor.id !== work.ownerId) return deny("Only the owner can change this.");
+  if (!hasWriteAccess(access))
+    return deny("Changing work needs write access to this repo on GitHub.");
+  return allow;
+}
+
+/** Closing a task or project, and releasing someone's adoption early. */
+export function canCloseOrRelease(actor: Actor, work: { ownerId: number }): Decision {
+  if (actor.blocked) return deny("Blocked people can't change work.");
+  if (actor.id === work.ownerId || isAdmin(actor)) return allow;
+  return deny("Only the owner or an admin can do this.");
 }

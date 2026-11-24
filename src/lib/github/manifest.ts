@@ -29,7 +29,7 @@ export function buildManifest(opts: {
     // App names are unique across GitHub, so include the org. GitHub lets the admin edit it.
     name: `Pitch In ${opts.org}`.slice(0, MAX_APP_NAME),
     url: opts.appUrl,
-    description: "Pick up a coworker's wishlist task.",
+    description: "Pick up part of a coworker's project.",
     hook_attributes: { url: opts.smeeUrl, active: true },
     redirect_url: `${opts.appUrl}/setup/callback`,
     callback_urls: [`${opts.appUrl}/api/auth/github/callback`],

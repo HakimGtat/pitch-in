@@ -15,7 +15,7 @@ export class PermissionError extends Error {}
 
 type Profile = NonNullable<User["profile"]>;
 
-async function getUser(db: Db, id: number): Promise<User> {
+export async function getUser(db: Db, id: number): Promise<User> {
   const [user] = await db.select().from(users).where(eq(users.id, id));
   if (!user) throw new PermissionError("That person doesn't exist.");
   return user;
@@ -120,6 +120,11 @@ export async function setProfile(
       details: { from: target.profile, to: profile },
     });
   });
+}
+
+/** "How much do you want to take on?" Only a board default, so it isn't audited. */
+export async function setTakeOn(db: Db, userId: number, takeOn: User["takeOn"], now: Date = new Date()): Promise<void> {
+  await db.update(users).set({ takeOn, updatedAt: now }).where(eq(users.id, userId));
 }
 
 export async function listUsers(db: Db): Promise<User[]> {

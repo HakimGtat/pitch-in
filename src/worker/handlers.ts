@@ -1,7 +1,14 @@
 import { writeAudit } from "@/lib/audit";
+import { getConfig } from "@/lib/config";
 import type { Db } from "@/lib/db/client";
+import { createRepoGitHub } from "@/lib/github/app";
+import type { RepoGitHub } from "@/lib/github/repos";
 import type { JobHandler, Logger } from "@/lib/jobs";
 import { WEBHOOK_JOB, type GitHubWebhookJob } from "@/lib/github/webhook";
+import { refreshRepo, reposForPush } from "@/lib/repos";
+
+/** What the handlers need from outside. Tests pass a fake GitHub. */
+export type HandlerDeps = { repoGitHub: () => RepoGitHub };
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v && typeof v === "object" ? (v as Obj) : {});
@@ -18,6 +25,7 @@ export async function handleGitHubWebhook(
   db: Db,
   job: GitHubWebhookJob,
   log: Logger,
+  deps: HandlerDeps,
 ): Promise<void> {
   const body = obj(job.body);
   const sender = str(obj(body.sender).login);
@@ -40,11 +48,36 @@ export async function handleGitHubWebhook(
     return;
   }
 
-  // Repos, pull requests and checks are handled from Milestone 2 on.
+  // A push to a connected repo's default branch: re-read PROJECT_BRIEF.md and CI.
+  if (job.event === "push") {
+    const repository = obj(body.repository);
+    const githubRepoId = Number(repository.id);
+    const branch = str(repository.default_branch);
+    if (!githubRepoId || !branch || str(body.ref) !== `refs/heads/${branch}`) {
+      log.info(`GitHub webhook push to a branch other than the default (delivery ${job.deliveryId}); nothing to refresh`);
+      return;
+    }
+    const [repo] = await reposForPush(db, githubRepoId);
+    if (!repo) {
+      log.info(`GitHub webhook push to ${str(repository.full_name) ?? githubRepoId}, which isn't connected; ignored`);
+      return;
+    }
+    const updated = await refreshRepo(db, deps.repoGitHub(), repo.id);
+    log.info(
+      `Refreshed ${updated.fullName} after a push: CI ${updated.hasCi ? "found" : "missing"}, PROJECT_BRIEF.md ${updated.projectBrief ? "found" : "missing"}`,
+    );
+    return;
+  }
+
+  // Pull requests and checks are handled from Milestone 3 on.
   log.info(`GitHub webhook ${label} received (delivery ${job.deliveryId}); no action needed yet`);
 }
 
-export const handlers: Record<string, JobHandler> = {
-  [WEBHOOK_JOB]: (db, payload, log) =>
-    handleGitHubWebhook(db, payload as GitHubWebhookJob, log),
-};
+export function createHandlers(deps: HandlerDeps): Record<string, JobHandler> {
+  return {
+    [WEBHOOK_JOB]: (db, payload, log) =>
+      handleGitHubWebhook(db, payload as GitHubWebhookJob, log, deps),
+  };
+}
+
+export const handlers = createHandlers({ repoGitHub: () => createRepoGitHub(getConfig()) });

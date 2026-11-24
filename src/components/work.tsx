@@ -1,0 +1,166 @@
+import Link from "next/link";
+import type { ReactNode } from "react";
+import type { TaskBrief, TaskKind, SizeTier } from "@/lib/db/schema";
+import { taskRef } from "@/lib/prompt";
+import { formatLines, LINE_CAP, TIER_LABEL } from "@/lib/sizing";
+import type { FullTaskView } from "@/lib/views";
+import { Badge, Code, Notice } from "./ui";
+
+/** ?notice= and ?error= messages after an action. */
+export function Flash({ notice, error }: { notice?: string; error?: string }) {
+  return (
+    <>
+      {notice ? <Notice kind="success">{notice}</Notice> : null}
+      {error ? <Notice kind="error">{error}</Notice> : null}
+    </>
+  );
+}
+
+export function TierBadge({ tier, cap = false }: { tier: SizeTier; cap?: boolean }) {
+  const tone = tier === "small" ? "brand" : tier === "medium" ? "neutral" : "amber";
+  return (
+    <Badge tone={tone}>
+      {TIER_LABEL[tier]}
+      {cap ? ` · up to ${formatLines(LINE_CAP[tier])} lines` : ""}
+    </Badge>
+  );
+}
+
+export function KindBadge({ kind }: { kind: TaskKind }) {
+  return kind === "other" ? <Badge>Docs, research or design</Badge> : null;
+}
+
+/** Where a task stands, from the viewer's side. */
+export function TaskState({ task, waiting = false, viewerId }: { task: FullTaskView; waiting?: boolean; viewerId: number }) {
+  if (task.status === "merged") return <Badge tone="brand">Done</Badge>;
+  if (task.status === "closed") return <Badge>Closed</Badge>;
+  if (task.status === "in_review" || task.status === "changes_requested") return <Badge tone="amber">In review</Badge>;
+  if (task.holder) {
+    return task.holder.userId === viewerId ? (
+      <Badge tone="brand">Yours</Badge>
+    ) : (
+      <Badge tone="amber">Taken by @{task.holder.handle}</Badge>
+    );
+  }
+  if (waiting) return <Badge>Waits its turn</Badge>;
+  return <Badge tone="brand">Open</Badge>;
+}
+
+export function TaskRow({ task, waiting, viewerId }: { task: FullTaskView; waiting?: boolean; viewerId: number }) {
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
+      <span className="w-12 shrink-0 font-mono text-xs text-stone-500">{taskRef(task.id)}</span>
+      <Link href={`/tasks/${task.id}`} className="min-w-0 flex-1 font-medium hover:underline">
+        {task.position !== null ? <span className="text-stone-500">{task.position}. </span> : null}
+        {task.title}
+      </Link>
+      <span className="flex flex-wrap items-center gap-1.5">
+        <KindBadge kind={task.kind} />
+        <TierBadge tier={task.sizeTier} />
+        <TaskState task={task} waiting={waiting} viewerId={viewerId} />
+      </span>
+    </li>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="py-3">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-stone-500">{label}</dt>
+      <dd className="mt-1 text-stone-800">{children}</dd>
+    </div>
+  );
+}
+
+const Paragraph = ({ text }: { text: string }) => <p className="whitespace-pre-wrap">{text}</p>;
+
+/** The Task Brief, laid out from its fields (the same content as the Markdown agents get). */
+export function BriefView({
+  brief,
+  kind,
+  sizeTier,
+  allowedPaths,
+}: {
+  brief: TaskBrief;
+  kind: TaskKind;
+  sizeTier: SizeTier;
+  allowedPaths: string[];
+}) {
+  const none = brief.testCommand.trim().toLowerCase() === "none";
+  return (
+    <dl className="divide-y divide-stone-100">
+      <Field label="Goal">
+        <Paragraph text={brief.goal} />
+      </Field>
+      <Field label="Files to look at">
+        <ul className="space-y-1">
+          {brief.files.map((f) => (
+            <li key={f}>
+              <Code>{f}</Code>
+            </li>
+          ))}
+        </ul>
+      </Field>
+      {brief.output ? (
+        <Field label="Output">
+          <Paragraph text={brief.output} />
+        </Field>
+      ) : null}
+      <Field label="Allowed paths">
+        <span className="flex flex-wrap gap-1.5">
+          {allowedPaths.map((p) => (
+            <Code key={p}>{p}</Code>
+          ))}
+        </span>
+      </Field>
+      {brief.current || brief.expected ? (
+        <Field label="Current and expected behaviour">
+          <div className="space-y-2">
+            {brief.current ? (
+              <p className="whitespace-pre-wrap">
+                <span className="font-medium">Now: </span>
+                {brief.current}
+              </p>
+            ) : null}
+            {brief.expected ? (
+              <p className="whitespace-pre-wrap">
+                <span className="font-medium">Expected: </span>
+                {brief.expected}
+              </p>
+            ) : null}
+          </div>
+        </Field>
+      ) : null}
+      <Field label="Acceptance criteria">
+        <ul className="space-y-1">
+          {brief.acceptance.map((c) => (
+            <li key={c} className="flex gap-2">
+              <span aria-hidden className="mt-1 h-3.5 w-3.5 shrink-0 rounded border border-stone-400" />
+              {c}
+            </li>
+          ))}
+        </ul>
+      </Field>
+      <Field label="Test command">{none ? <span className="text-stone-600">None for this task</span> : <Code>{brief.testCommand}</Code>}</Field>
+      <Field label="Constraints">
+        <Paragraph text={brief.constraints} />
+      </Field>
+      <Field label="Estimate">
+        <span className="flex items-center gap-2">
+          <TierBadge tier={sizeTier} cap />
+          <KindBadge kind={kind} />
+        </span>
+      </Field>
+      {brief.outOfScope ? (
+        <Field label="Out of scope">
+          <Paragraph text={brief.outOfScope} />
+        </Field>
+      ) : null}
+      {brief.example ? (
+        <Field label="Example input and output">
+          <Paragraph text={brief.example} />
+        </Field>
+      ) : null}
+    </dl>
+  );
+}

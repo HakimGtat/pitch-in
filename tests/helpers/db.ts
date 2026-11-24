@@ -15,7 +15,7 @@ export async function createTestDb(): Promise<{ db: Db; reset: () => Promise<voi
     db: db as unknown as Db,
     reset: async () => {
       await db.execute(
-        sql`TRUNCATE audit_log, alerts, jobs, reviews, submissions, adoptions, tasks, repos, users RESTART IDENTITY CASCADE`,
+        sql`TRUNCATE audit_log, alerts, jobs, reviews, submissions, adoptions, tasks, milestones, projects, repos, users RESTART IDENTITY CASCADE`,
       );
     },
     close: () => client.close(),

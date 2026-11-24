@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Pitch In",
-  description: "Pick up a coworker's wishlist task.",
+  description: "Pick up part of a coworker's project.",
 };
 
 async function SiteHeader() {
@@ -34,7 +34,10 @@ async function SiteHeader() {
             {ready ? (
               <>
                 <Link href="/" className="rounded-md px-3 py-1.5 hover:bg-stone-100">
-                  Wishlist
+                  Board
+                </Link>
+                <Link href="/repos" className="rounded-md px-3 py-1.5 hover:bg-stone-100">
+                  Repos
                 </Link>
                 {isAdmin(user) ? (
                   <Link href="/admin" className="rounded-md px-3 py-1.5 hover:bg-stone-100">

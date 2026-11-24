@@ -1,11 +1,13 @@
 import { createHmac } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Db } from "@/lib/db/client";
-import { auditLog, jobs } from "@/lib/db/schema";
+import { auditLog, jobs, repos } from "@/lib/db/schema";
 import { receiveWebhook, verifyWebhookSignature } from "@/lib/github/webhook";
 import { runNextJob } from "@/lib/jobs";
-import { handlers } from "@/worker/handlers";
-import { createTestDb } from "./helpers/db";
+import { connectRepo } from "@/lib/repos";
+import { createHandlers, handlers } from "@/worker/handlers";
+import { createTestDb, insertUser } from "./helpers/db";
+import { fakeGitHub } from "./helpers/github";
 
 const secret = "webhook-secret";
 const sign = (body: string, key = secret) =>
@@ -96,5 +98,35 @@ describe("receiving webhooks", () => {
     await runNextJob(db, handlers, quietLog);
     const [job] = await db.select().from(jobs);
     expect(job.status).toBe("done");
+  });
+});
+
+describe("push webhooks", () => {
+  let db: Db;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+  afterAll(() => close());
+
+  it("refresh PROJECT_BRIEF.md when a connected repo's default branch changes", async () => {
+    const fake = fakeGitHub();
+    fake.addRepo(42, "acme/site", { ".github/workflows/ci.yml": "x", "PROJECT_BRIEF.md": "old" }, { olive: "admin" });
+    const olive = await insertUser(db, { handle: "olive" });
+    await connectRepo(db, fake.gh, olive.id, 42);
+    fake.world.files.get("acme/site")!["PROJECT_BRIEF.md"] = "new brief";
+    const run = createHandlers({ repoGitHub: () => fake.gh });
+
+    const send = async (ref: string, id: string) => {
+      const body = JSON.stringify({ ref, repository: { id: 42, full_name: "acme/site", default_branch: "main" } });
+      await receiveWebhook(db, { secret, rawBody: body, event: "push", deliveryId: id, signature: sign(body) });
+      await runNextJob(db, run, quietLog);
+    };
+
+    await send("refs/heads/feature", "push-1");
+    expect((await db.select().from(repos))[0].projectBrief).toBe("old");
+    await send("refs/heads/main", "push-2");
+    expect((await db.select().from(repos))[0].projectBrief).toBe("new brief");
   });
 });

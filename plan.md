@@ -6,7 +6,7 @@ The pitch is "pick up part of a coworker's project", not token sharing. Contribu
 
 Working name: Pitch In (check for clashes before any public version). The folder stays `ShareAt0ken` for now.
 
-**Status:** Milestone 1 is done (2026-11-23, verified live against a test org). This version widens Pitch In from coding tasks to any AI project, adds projects with milestones, and lets contributors choose how much they take on. Milestone 2 is next.
+**Status:** Milestone 1 is done (2026-11-23, verified live against a test org). Milestone 2 is built and checked live (2026-11-23, see its section for the one step left). Milestone 3 is next.
 
 ## Constraints
 
@@ -51,19 +51,19 @@ The answer only sets the guidance level. Posting needs write access to the repo,
 
 Each person also sets **"How much do you want to take on?"** on their profile (see [Sizing](#sizing)). It's a default for the board filter and can be changed any time.
 
-> Milestone 1 shipped the question as "Are you on the AI team?". Milestone 2 rewords it.
+> Milestone 1 shipped the question as "Are you on the AI team?". Milestone 2 reworded it and added "How much do you want to take on?" to the welcome page.
 
 ## Core flow
 
 1. The company does the one-time [setup checklist](#company-setup-checklist).
-2. A coworker connects their project's repo (it must have CI) and commits a `PROJECT_BRIEF.md`.
+2. A coworker connects their project's repo (it must have CI) and commits a `PROJECT_BRIEF.md`. A repo without one connects with a warning, so writing it can be the repo's first task.
 3. The owner posts a single task, or a project with ordered milestones split into tasks. Each task has a Task Brief, an estimate and allowed paths. The brief checker runs.
 4. A coworker picks how much they want to take on. The board shows work that fits, and they adopt one task or a whole milestone (48-hour lock).
 5. They click **Start in Claude**. Claude Code on the web opens with the repo and prompt filled in. They press Enter and wait. Claude Code on the web opens the PR itself, as a **draft** (the prototype saw this; there was no Create PR step to click). They come back to the site and click **Check for my PR**. Developers can instead copy the brief into any agent.
 6. The PR body starts with `Task: <task id>` so the site links it. In the prototype the PR kept that first line and all six template sections, so the paste-the-link fallback is kept but was not needed. The PR is authored by the contributor's own GitHub account, which is what "only the adopter's PR links" relies on (the account Claude is connected to must match the username they signed in with). If it doesn't link, the contributor pastes the PR link into the task page.
 7. The GitHub App runs five automatic checks.
 8. The owner reviews on the review page, then merges on GitHub, requests changes, or rejects.
-9. On a milestone, the contributor moves on to its next task, or hands back after any merged PR. Whatever is left goes back on the board for someone else to continue.
+9. On a milestone, the contributor moves on to its next task, or hands back any time none of their PRs is open. Whatever is left goes back on the board for someone else to continue.
 
 ## Roles and permissions
 
@@ -80,7 +80,8 @@ Per-repo settings (repo admins and admins): largest estimate allowed, off-limits
 
 Rules:
 - Sign-in is GitHub OAuth, limited to members of the configured GitHub team. Team membership is re-checked at every sign-in, so people who leave lose access.
-- Posting and reviewing follow GitHub: you need write access to that repo, checked fresh each time. The site never grants more power than GitHub does. (Milestone 1's rule also required `ai-team` membership; Milestone 2 drops that.)
+- Posting and reviewing follow GitHub: you need write access to that repo, checked fresh each time. The site never grants more power than GitHub does. (Milestone 1's rule also required `ai-team` membership; Milestone 2 dropped that.)
+- Owners can't take on their own work, since they review it.
 - Only the task owner or a repo admin should merge. Anything else sets off the [unreviewed-merge alert](#unreviewed-merge-alert).
 - Every role change, block and admin action goes into `audit_log` with actor and time.
 
@@ -116,9 +117,9 @@ It's set on the profile as a default and can be changed on the board any time. I
 
 - A project lives in one connected repo. A repo can hold several projects and loose single tasks.
 - A project has a title, a short goal, and ordered milestones. Each milestone has a goal and ordered tasks. Every task has its own brief, estimate and allowed paths, and ends in one PR.
-- **Adopting a task:** as before, one task, one PR.
+- **Adopting a task:** as before, one task, one PR. Inside a milestone, tasks go in order: only the milestone's next unfinished task can be adopted on its own. Milestones in the same project can run side by side.
 - **Adopting a whole milestone:** the contributor takes its open tasks in order. Each task gets its own Start in Claude run and its own PR, and the owner reviews it before the next one starts. The prompt for each run adds the project and milestone goals and a one-line note on what the earlier tasks in the milestone did.
-- **Handing back:** after any merged PR, the contributor can stop. The milestone's remaining tasks go back on the board, and anyone can continue.
+- **Handing back:** any time none of their PRs is open, the contributor can stop. Merged tasks stay done; the milestone's remaining tasks go back on the board, and anyone can continue.
 - **Locks:** a milestone adoption locks its open tasks for 48 hours, renewed each time one of the contributor's PRs is opened or merged.
 - A milestone is done when all its tasks are merged. A project is done when its last milestone finishes or the owner marks it done.
 - This replaces the earlier "Open-ended tier with checkpoints": a checkpoint is now just the next task in a milestone.
@@ -161,7 +162,7 @@ Off-limits paths live only in repo settings. The checks enforce that list, and t
 
 Writing rules: name exact files, functions and commands; acceptance criteria a reviewer can tick in seconds; under about 500 words (longer means two tasks); never include secrets, `.env` values, customer data or private URLs (ship `.env.example`); facts and requirements only, never instructions to run commands outside the repo's own test and setup commands.
 
-The brief checker (no AI needed) flags: missing required fields, files to look at that don't exist in the repo, allowed-path patterns that match nothing (a warning only, since new work can create new folders), briefs over the word limit, anything that looks like a secret, and commands or links outside the repo.
+The brief checker (no AI needed) flags: missing required fields, files to look at that don't exist in the repo, allowed-path patterns that match nothing (a warning only, since new work can create new folders), briefs over the word limit, anything that looks like a secret, and commands or links outside the repo. Every flag blocks posting except the allowed-path warning, which asks for a "Post anyway". The test command must be one plain command (no `;`, `&&`, `|`, `$(`). Project and milestone goals get the secret, link and command checks too, since they go into every prompt.
 
 Task Brief template (code):
 
@@ -224,7 +225,7 @@ Task Brief template (research):
 - Lock expiry is computed when the task is read (`expires_at < now()` means it's free again), so there is no expiry job.
 - Only PRs authored by the current adopter get linked. Anyone else's PR gets a failing check that says "adopt this task first".
 - After "Request changes", the adopter has **72 hours** to push a fix. Otherwise the PR is closed and the task reopens.
-- On a milestone, the adopter can hand back after any merged PR; the remaining tasks reopen.
+- The adopter can hand back a task or a milestone any time none of their PRs is open; the remaining tasks reopen.
 
 Task statuses: `open` -> `adopted` -> `in_review` -> `changes_requested` -> `in_review` -> `merged`. A task goes back to `open` on reject, lock expiry, a missed fix window, or a hand-back. It becomes `closed` when the owner withdraws it.
 
@@ -330,15 +331,15 @@ Owner merges on GitHub -> webhook -> task closes, milestone moves on
 
 ### Data model
 
-Milestone 1 created users, repos, tasks, adoptions, submissions, reviews, jobs, alerts and audit_log. Milestone 2 adds projects and milestones and the new columns marked below.
+Milestone 1 created users, repos, tasks, adoptions, submissions, reviews, jobs, alerts and audit_log. Milestone 2 added projects and milestones and the columns marked new below.
 
 | Table | Key fields |
 | --- | --- |
 | users | github_id, handle, profile (developer or guided), take_on (quick, session or big; new), is_main_admin, is_org_owner, in_ai_team, blocked, membership_checked_at |
-| repos | github_repo_id, installation_id, project_brief, has_ci, settings (largest estimate, off-limits paths, size-cap ignore list) |
+| repos | github_repo_id, installation_id, project_brief, has_ci, refreshed_at (new), settings (largest estimate, off-limits paths, size-cap ignore list) |
 | projects (new) | repo_id, owner_id, title, goal, status (open, done, closed) |
 | milestones (new) | project_id, position, title, goal, status (open, in_progress, done) |
-| tasks | repo_id, project_id and milestone_id (new, optional), position (new), owner_id, title, brief_md, size_tier (small, medium, large), allowed_paths, status |
+| tasks | repo_id, project_id and milestone_id (new, optional), position (new), owner_id, title, kind (code or other; new), brief (the structured fields; new), brief_md, size_tier (small, medium, large), allowed_paths, status |
 | adoptions | task_id, milestone_id (new, set for whole-milestone adoptions), user_id, expires_at, status (active, released, expired, completed) |
 | submissions | task_id, pr_number, head_sha, author_id, check_results, usage_note, fix_round, status |
 | reviews | submission_id, reviewer_id, decision, comments |
@@ -371,7 +372,7 @@ Work through these in order. Finish each one (tests passing) before starting the
 - Register the GitHub App through the manifest flow and receive webhooks via smee.
 - Done when: a team member can sign in, an outsider can't, a block by the main admin shows up in `audit_log`, and a webhook from GitHub reaches the local app. All four verified live against the `PromptIn-test` org.
 
-### Milestone 2: Projects, tasks and briefs
+### Milestone 2: Projects, tasks and briefs (built 2026-11-23)
 - Connect a repo through the GitHub App (repo admins; refused without CI, with a starter workflow offered for docs repos); read and refresh `PROJECT_BRIEF.md`.
 - Post a single task, or a project with milestones and tasks. Task form with the brief template, output, allowed paths, estimate and the brief checker.
 - "How much do you want to take on?" on the profile and the board; the board shows work that fits, grouped by project.
@@ -379,6 +380,7 @@ Work through these in order. Finish each one (tests passing) before starting the
 - "Start in Claude" link (with the project and milestone goals), "Copy brief", and the guided walkthrough ("wait for the PR, then click Check for my PR", no Create PR step).
 - Update Milestone 1 pieces: posting needs write access only (no `ai-team` requirement), and the welcome question becomes "Have you worked with a coding agent like Claude Code before?".
 - Done when: a coworker with write access posts a project with two milestones; someone who picked "a quick run" sees only Small tasks; a different member adopts a whole milestone; adopting any of its tasks again is blocked; the lock lapses at 48 hours (tested with a fake clock); and "Start in Claude" opens a session with the repo and brief filled in.
+- How it was checked (2026-11-23): 169 tests, plus a live run against the `PromptIn-test` org with `PromptIn-test/pitch-in-sample` (a public copy of the prototype's sample repo, sample data). The repo connected with CI and `PROJECT_BRIEF.md` read. A project with two milestones and four tasks was posted through the forms, and the brief checker caught a bad brief. "A quick run" showed only the two Small tasks. A sample user (`src/scripts/sample-adopt.ts`, sample data, standing in for a second person) adopted milestone 1, and its tasks then showed as taken with no way to adopt them. The 48-hour lapse is covered by fake-clock tests. Start in Claude opened Claude Code on the web with the full prompt filled in, but the org repo wasn't preselected because Claude's GitHub App isn't installed on `PromptIn-test` yet (setup checklist step 5); the same link format did preselect a repo that Claude's App can see. **Left to do:** install Claude's GitHub App on `PromptIn-test` and open Start in Claude once more.
 
 ### Milestone 3: Checks and review
 - Link PRs from the `Task: <id>` line, with the paste-the-link fallback; only the adopter's PRs link. Drafts link and get checked.
@@ -460,7 +462,7 @@ Hitting them is the case for the pitch list.
 
 ## Prompt for the next milestone
 
-> Read plan.md. Start Milestone 2 only. Before writing code, interview me on anything the plan leaves open (with a recommendation for each), then show me a short plan. Add projects and milestones to the data model, connect repos through the GitHub App (refused without CI), the task and project forms with the brief checker, the "How much do you want to take on?" choice and the board that shows work that fits, adopting a task or a whole milestone with the 48-hour lock, and the Start in Claude and Copy brief links. Update Milestone 1's posting rule and welcome question as the plan says. Write tests first for the brief checker, the lock, milestone adoption and the fit filter. Stop when Milestone 2's "Done when" is met and summarize what you built.
+> Read plan.md. Start Milestone 3 only. Before writing code, interview me on anything the plan leaves open (with a recommendation for each), then show me a short plan. Link PRs to tasks from the `Task: <id>` first line, with the paste-the-link fallback and "Check for my PR" (only the current adopter's PRs link; drafts link and get checked). Add gitleaks to the image and run the five checks in the worker as one GitHub check run. Build the review page with "what to check", request changes and reject as GitHub comments, the 72-hour fix window and one fix round with "Continue in Claude" for guided users. Close the task and move the milestone on when GitHub reports the merge, renew milestone locks on each PR, and add the unreviewed-merge alert using GitHub's collaborator permission API. Write tests first for the five checks, PR linking and the alert. Stop when Milestone 3's "Done when" is met and summarize what you built.
 
 ## Sources
 
