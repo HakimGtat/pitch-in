@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Milestones 1 (foundation), 2 (projects, tasks and briefs) and 3 (plan import) are built; Milestone 4 (checks and review) is next, posted on the local board from `plan.md` as tasks PI-9 to PI-22 on `PromptIn-test/pitch-in`. **Pitch In** is an internal board where coworkers post the projects they build with AI (websites, games, apps, research, automation) as single tasks or projects with milestones, and any coworker takes on as much as they want, runs it in their own Claude session, and opens a PR for the owner to review. Every task ends as a PR in a company GitHub repo, code or not.
+Milestones 1 (foundation), 2 (projects, tasks and briefs), 3 (plan import) and 4 (checks and review) are built; Milestone 5 (demo-org trial) is next, after an org owner switches on the App's `issue_comment` and `check_run` events. **Pitch In** is an internal board where coworkers post the projects they build with AI (websites, games, apps, research, automation) as single tasks or projects with milestones, and any coworker takes on as much as they want, runs it in their own Claude session, and opens a PR for the owner to review. Every task ends as a PR in a company GitHub repo, code or not.
 
 - `plan.md` is the source of truth: decisions, data model, checks, milestones, and the prompt for the next milestone.
 - `plan-v1.md` is the pre-review version, kept locally for reference only and ignored by git (the repo is public). It is out of date (Vercel, 72-hour locks, token-sharing pitch); never build from it or commit it.

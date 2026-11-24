@@ -1,9 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { adoptMilestone, handBack, syncMilestoneStatus } from "@/lib/adoption";
-import { writeAudit } from "@/lib/audit";
+import { adoptMilestone, handBack } from "@/lib/adoption";
 import { checkBrief, emptyBrief, type BriefDraft } from "@/lib/brief";
 import { createDb } from "@/lib/db/client";
-import { taskRef } from "@/lib/prompt";
 import { promptForTask } from "@/lib/start";
 import { loadTaskView } from "@/lib/views";
 import { adoptions, repos, tasks, users } from "@/lib/db/schema";
@@ -15,7 +13,6 @@ import { adoptions, repos, tasks, users } from "@/lib/db/schema";
 //   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data hand-back <milestoneId>
 //   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data post-task <repoId>
 //   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data start-link <taskId>
-//   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data mark-merged <taskId>
 //
 // adopt and hand-back go through the same code the site uses. start-link
 // prints the Start in Claude link the sample user's task page would show, built
@@ -23,12 +20,6 @@ import { adoptions, repos, tasks, users } from "@/lib/db/schema";
 // a sample single task owned by the sample user straight to the database,
 // skipping the GitHub write-access check (the sample user has no GitHub
 // account), so a real account can take it on and try Start in Claude.
-//
-// mark-merged is TEMPORARY: it stands in for the merge webhook until PI-21
-// ("Merge closes the task and moves the milestone on") exists. Run it only
-// after the task's PR is merged on GitHub. It sets the task to merged, its
-// active adoption to completed and the milestone's status, and writes an
-// audit_log row, so the milestone's next task comes up. Remove it with PI-21.
 //
 // Not part of the Docker image. Don't run it against a real company install.
 
@@ -44,9 +35,9 @@ async function main() {
   }
   const [command, idArg] = args.filter((a) => a !== "--sample-data");
   const id = Number(idArg);
-  if (!["adopt", "hand-back", "post-task", "start-link", "mark-merged"].includes(command) || !Number.isInteger(id)) {
+  if (!["adopt", "hand-back", "post-task", "start-link"].includes(command) || !Number.isInteger(id)) {
     console.error(
-      "Usage: sample-adopt.ts --sample-data adopt|hand-back <milestoneId> | post-task <repoId> | start-link|mark-merged <taskId>",
+      "Usage: sample-adopt.ts --sample-data adopt|hand-back <milestoneId> | post-task <repoId> | start-link <taskId>",
     );
     process.exit(1);
   }
@@ -116,33 +107,6 @@ async function main() {
       const { url, long } = await promptForTask(db, task, now);
       console.log(url);
       console.error(`${url.length} characters${long ? ", longer than any link tested so far" : ""}.`);
-    } else if (command === "mark-merged") {
-      const now = new Date();
-      const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
-      if (!task) throw new Error("No task with that id.");
-      if (task.status === "merged" || task.status === "closed") throw new Error(`${taskRef(id)} is already ${task.status}.`);
-      const ended = await db.transaction(async (tx) => {
-        const rows = await tx
-          .update(adoptions)
-          .set({ status: "completed", endedAt: now })
-          .where(and(eq(adoptions.taskId, id), eq(adoptions.status, "active")))
-          .returning({ id: adoptions.id, userId: adoptions.userId });
-        await tx.update(tasks).set({ status: "merged", updatedAt: now }).where(eq(tasks.id, id));
-        await syncMilestoneStatus(tx, task.milestoneId, now);
-        await writeAudit(tx, {
-          actorId: null,
-          action: "task.merged",
-          target: taskRef(id),
-          details: {
-            via: "sample-adopt mark-merged (temporary, until PI-21)",
-            completedAdoptions: rows.map((r) => r.id),
-          },
-        });
-        return rows;
-      });
-      console.log(
-        `${taskRef(id)} marked merged; ${ended.length ? `adoption ${ended.map((r) => r.id).join(", ")} completed` : "no active adoption to complete"}.`,
-      );
     } else if (command === "adopt") {
       const ids = await adoptMilestone(db, sample.id, id);
       console.log(`@${sample.handle} adopted milestone ${id}: tasks ${ids.map((i) => `PI-${i}`).join(", ")}.`);
