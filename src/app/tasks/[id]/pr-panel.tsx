@@ -38,8 +38,8 @@ export function PrPanel({ taskId, viewer, submission, status, review }: Props) {
         {checks?.results.length && viewer !== "other" ? (
           <ul className="mt-3 space-y-1 font-mono text-xs">
             {checks.results.map((r) => (
-              <li key={r.name} className={r.passed ? "text-stone-600" : "text-red-700"}>
-                {r.passed ? "✓" : "✗"} {r.name.padEnd(9, " ")} {r.detail}
+              <li key={r.name} className={`whitespace-pre-wrap ${r.passed ? "text-stone-600" : "text-red-700"}`}>
+                {`${r.passed ? "✓" : "✗"} ${r.name.padEnd(9, " ")} ${r.detail}`}
               </li>
             ))}
           </ul>
