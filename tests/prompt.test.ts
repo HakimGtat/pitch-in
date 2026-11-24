@@ -128,8 +128,18 @@ describe("the contributor rules", () => {
 
   it("prefer an assumption, and ask the owner on the PR only when a wrong guess would waste the run", () => {
     expect(p).toContain('note it under "Not done or assumed" and carry on');
-    expect(p).toContain("only when a wrong guess would waste the whole run");
+    expect(p).toContain("when a wrong guess would waste the whole run");
     expect(p).toContain('a comment starting "Question for owner:"');
+  });
+
+  it("never make the contributor wait or come back: a question ends the run, and the owner takes over", () => {
+    expect(p).toContain("end the run there. Don't wait for an answer: the owner takes it from there.");
+    expect(p).not.toMatch(/wait for the answer/i);
+    expect(p).toContain("Once the PR is open, your part is done");
+  });
+
+  it("ask the agent to check the PR's shape itself, the way the site will", () => {
+    expect(p).toContain("check its shape yourself, the way Pitch In will");
   });
 
   it("ask for word-for-word criteria with file:line pointers, and nothing GitHub already shows", () => {
@@ -173,9 +183,15 @@ describe("startInClaudeUrl", () => {
 describe("the guided walkthrough", () => {
   it("has no Create PR step, ends with the owner, and never mentions merging", () => {
     const text = GUIDED_STEPS.join(" ").toLowerCase();
-    expect(text).toContain("check for my pr");
     expect(text).not.toContain("create pr");
     expect(text).not.toMatch(/merg/);
     expect(GUIDED_STEPS.at(-1)).toMatch(/the owner takes it from here/);
+  });
+
+  it("never asks the contributor to come back once the PR is open", () => {
+    const text = GUIDED_STEPS.join(" ").toLowerCase();
+    expect(text).not.toContain("come back");
+    expect(text).not.toContain("check for my pr");
+    expect(GUIDED_STEPS.at(-1)).toMatch(/your part is done/i);
   });
 });

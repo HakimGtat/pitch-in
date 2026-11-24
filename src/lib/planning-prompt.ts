@@ -63,7 +63,7 @@ export function buildPlanningPrompt({ repo, planFile, section }: PlanningInput):
   return [
     `Plan a project for Pitch In, our board where coworkers each take on one task in their own Claude session, in the GitHub repo ${repo.fullName}. Split the plan into milestones and tasks. Don't change, commit or push anything, and don't open a pull request.`,
     what,
-    `Keep it cheap: reformat the plan, don't redesign it. ${reading} Open another file only to confirm a path or a name (git ls-files lists them). Never read the whole codebase; contributors do that. Where the plan is unclear, take the simplest reading and say so in that task's constraints.`,
+    `Keep it cheap: reformat the plan, don't redesign it. ${reading} Open another file only to confirm a path or a name (git ls-files lists them). Never read the whole codebase; contributors do that. Where the plan is unclear, take the simplest reading and say so in that task's constraints, so contributors never need to ask.`,
     `Splitting rules:\n${rules.join("\n")}`,
     `Answer with only one \`\`\`json block in this format, every field filled in, testCommand included:\n\`\`\`json\n${IMPORT_SKELETON}\n\`\`\``,
   ].join("\n\n") + "\n";

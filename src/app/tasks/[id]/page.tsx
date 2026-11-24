@@ -177,12 +177,6 @@ export default async function TaskPage({
                       </div>
                     </div>
                   ) : null}
-                  <button type="button" disabled className={`${secondaryButtonClass} mt-2 w-full cursor-not-allowed opacity-60`}>
-                    Check for my PR
-                  </button>
-                  <p className="mt-1.5 text-xs text-stone-500">
-                    Linking PRs to tasks isn&apos;t switched on yet. The owner can still see your PR on GitHub.
-                  </p>
                 </>
               ) : (
                 <>

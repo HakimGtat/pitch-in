@@ -25,14 +25,15 @@ Working name: Pitch In (check for clashes before any public version). The folder
 | Who posts | Any signed-in coworker with write access to the project's repo |
 | Who picks up work | Anyone signed in, with a Developer or Guided profile |
 | Who does the work | The contributor's own agent, in their own Claude session, on their own seat |
+| Contributor's part | Ends when their agent opens the PR. They're never asked to answer questions, fix review comments or re-run after failed checks; the owner handles all of that |
 | Sizing | Both sides. The owner estimates each task (Small, Medium, Large). The contributor chooses how much they want to take on (a quick run, a session, a big chunk), and the board shows work that fits |
 | Deliverables | Always a PR in a GitHub repo. Non-code work is a Markdown report or files in the repo. Links (Google Docs, Figma, hosted demos) are on the Later list |
 | Rewards | None. A "helped ship" list on profiles and a monthly report for the admin |
 | Agents | Any agent that can work in a repo. "Start in Claude" opens Claude Code on the web with the task filled in; "Copy brief" works for anything else |
 | Platform | GitHub.com, through a GitHub App each company registers itself. The site never hosts code |
 | Planning | The owner's own agent splits the project into milestones and task briefs ("Plan in Claude"), and the owner pastes the result into the site |
-| Review | The owner reviews every PR together with their own agent. Nobody else reviews |
-| Owner's usage | Kept as low as possible: the site's free checks first, then the contributor's agent, and the owner's agent only for planning and the final call |
+| Review | The owner reviews every PR together with their own agent, and fixes small problems or reopens the task. Nobody else reviews |
+| Owner's usage | Kept as low as possible without asking contributors for more: the site's free checks first, then the contributor's agent, and the owner's agent only for planning, the final call and small fixes |
 | Merging | Always on GitHub, never from the site |
 | Permissions | Taken from GitHub, plus a main admin and a block list |
 | Running it | Docker Compose (web app, worker, Postgres). The company trial runs on a free machine picked with IT |
@@ -48,7 +49,7 @@ At first sign-in the site asks **"Have you worked with a coding agent like Claud
 | Developer | Yes | The full brief, "Start in Claude", "Copy brief" for other agents |
 | Guided | No | A step-by-step walkthrough and "Start in Claude". The walkthrough never mentions merging; it ends with "the owner takes it from here" |
 
-Every task is open to both profiles. The profile only changes how much guidance a person gets, not which work they can take. Once started, the agent works on its own and the automatic checks must pass before the PR reaches the owner, so a guided user never has to judge the result. Anyone can switch profile later, and admins can change it.
+Every task is open to both profiles. The profile only changes how much guidance a person gets, not which work they can take. Once started, the agent works on its own, and when it opens the PR the person's part is done: the checks and the owner take it from there, so a guided user never has to judge the result. Anyone can switch profile later, and admins can change it.
 
 The answer only sets the guidance level. Posting needs write access to the repo, whatever someone answers.
 
@@ -62,11 +63,22 @@ Each person also sets **"How much do you want to take on?"** on their profile (s
 2. A coworker connects their project's repo (it must have CI) and commits a `PROJECT_BRIEF.md`. A repo without one connects with a warning, so writing it can be the repo's first task.
 3. The owner plans the project with their own agent (**Plan in Claude**), pastes the result into the site, and the brief checker runs on every task. Single tasks and small changes go through the task form. Each task has a Task Brief, an estimate and allowed paths.
 4. A coworker picks how much they want to take on. The board shows work that fits, and they adopt one task or a whole milestone (48-hour lock).
-5. They click **Start in Claude**. Claude Code on the web opens with the repo and prompt filled in. They press Enter and wait. Their agent builds the work, reviews its own diff against the brief, and opens the PR in the [token-saving format](#review-friendly-prs). If it's blocked, it [asks the owner on the draft PR](#questions-between-agents). Claude Code on the web opens the PR itself, as a **draft** (the prototype saw this; there was no Create PR step to click). They come back to the site and click **Check for my PR**. Developers can instead copy the brief into any agent.
-6. The PR body starts with `Task: <task id>` so the site links it. In the prototype the PR kept that first line and all six template sections, so the paste-the-link fallback is kept but was not needed. The PR is authored by the contributor's own GitHub account, which is what "only the adopter's PR links" relies on (the account Claude is connected to must match the username they signed in with). If it doesn't link, the contributor pastes the PR link into the task page.
-7. The GitHub App runs seven automatic checks: plain code, no AI. A PR that fails any of them goes back to the contributor, and the owner never sees it.
-8. The owner reviews with their own agent (**Review in Claude**, from a prepared review packet), then accepts and merges on GitHub, rejects with adjustments, or rejects outright.
+5. They click **Start in Claude**. Claude Code on the web opens with the repo and prompt filled in. They press Enter and wait. Their agent builds the work, reviews its own diff against the brief, and opens the PR in the [token-saving format](#review-friendly-prs). If a wrong guess would waste the run, it [leaves a question for the owner](#questions-for-the-owner) on a draft PR and ends the run. Claude Code on the web opens the PR itself, as a **draft** (the prototype saw this; there was no Create PR step to click). Their part is done there; they don't need to come back. Developers can instead copy the brief into any agent.
+6. The PR body starts with `Task: <task id>` so the site links it. In the prototype the PR kept that first line and all six template sections, so the paste-the-link fallback is kept but was not needed. The PR is authored by the contributor's own GitHub account, which is what "only the adopter's PR links" relies on (the account Claude is connected to must match the username they signed in with). If it doesn't link, the owner (or the contributor, if they happen to look) pastes the PR link into the task page.
+7. The GitHub App runs seven automatic checks: plain code, no AI. A PR that fails any of them never reaches review: the owner fixes what's free to fix (a PR body edit, say) or reopens the task. The contributor sees the result but isn't asked to do anything.
+8. The owner reviews with their own agent (**Review in Claude**, from a prepared review packet), then accepts and merges on GitHub, has their agent fix small problems first, or reopens the task with notes for the next person.
 9. On a milestone, the contributor moves on to its next task, or hands back any time none of their PRs is open. Whatever is left goes back on the board for someone else to continue.
+
+## A contributor's part ends at the PR
+
+People help only if helping stays easy, so once someone takes a job and starts the run, Pitch In never asks them for anything else:
+
+- Open questions are settled before the job starts: the owner's planning agent writes the simplest reading into each brief's constraints.
+- During the run, the contributor's agent never waits. It notes its assumptions in the PR, and when a wrong guess would waste the run it ends early with a draft PR and a [question for the owner](#questions-for-the-owner).
+- After the PR opens, everything is the owner's: answering questions, fixing small problems, handling failed checks, and reopening the task when the work isn't right. The contributor sees what happened but is never asked to fix, answer or re-run.
+- Someone who took a whole milestone starts each next task when they want. That's part of the job they chose, not a follow-up.
+
+The trade is a little more of the owner's usage (small fixes in their own review session instead of a fix round). Contributor goodwill matters more: without contributors there's nothing to review.
 
 ## Keeping the owner's usage low
 
@@ -74,9 +86,9 @@ The owner's Claude usage is the scarcest thing in the loop, so every step runs a
 
 1. **The site's checks:** plain code with fixed rules, no AI and no tokens. They catch everything that can be checked mechanically, before the owner sees anything.
 2. **The contributor's agent:** builds the work with no limit on its own usage, reviews it twice, and writes the PR so the owner's agent can verify it by following pointers instead of searching. Contributor usage is never the thing to save.
-3. **The owner's agent:** plans each project once, then makes the final call on each PR from a review packet the site prepares, never from the whole repo.
+3. **The owner's agent:** plans each project once, then makes the final call on each PR from a review packet the site prepares, never from the whole repo, and fixes small problems itself instead of sending them back.
 
-The owner always reviews with their own agent; nobody else reviews. Re-reviews read only what changed, and agents ask the owner questions only when a wrong guess would waste the run.
+The owner always reviews with their own agent; nobody else reviews. There are no re-review rounds, and contributors' agents leave the owner a question only when a wrong guess would waste the run.
 
 ## Roles and permissions
 
@@ -184,7 +196,7 @@ Every task ships with a brief written so an agent with no prior knowledge of the
 
 - **Start in Claude:** the task page builds a link to Claude Code on the web: `https://claude.ai/code?prompt=<url-encoded prompt>&repositories=<owner>/<repo>`. Nothing is sent until the person presses Enter. The prompt stays short (the prototype's links ran about 3,200 to 3,600 characters; on 2026-11-24 links of 6,636 and 8,858 characters filled in completely, the second from a brief over the word limit, so any brief that passes the checker fits. Past 8,858 the task page also points to Copy brief; `prompt_url` stays untested): the project and milestone goals if any, the Task Brief, "read PROJECT_BRIEF.md first" (it's already in the repo), the off-limits paths from repo settings, and "open the PR with the template below, starting with `Task: <task id>`".
 - **Contributors trade their own usage for quality.** Only the owner's usage is kept low; the contributor's agent is told to spend whatever it takes to get the work right: read as much of the repo as it needs, write thorough tests, run the full test suite (not only the brief's test command), and before opening the PR do a second, independent review pass of its own diff against every acceptance criterion (for example a fresh subagent asked to find problems). Then it fills in the PR template with evidence pointers, so the owner's agent checks lines instead of searching.
-- When something is unclear, it writes down an assumption and carries on, and asks the owner only when a wrong guess would waste the run, since questions cost the owner usage.
+- When something is unclear, it writes down an assumption and carries on. Only when a wrong guess would waste the run does it end early with a draft PR and a `Question for owner:` comment; it never waits for the answer. Before opening the PR it also checks the PR's shape against the rules the site's checks use, so failed checks are rare. Once the PR is open, the contributor's part is done.
 - **Copy brief:** copies the same text, plus a .md download, for any other agent.
 - There are no personal access tokens in the MVP. Those come back with the MCP server (see Later).
 
@@ -274,24 +286,23 @@ Task Brief template (research):
 - Adopting locks a task, or a milestone's open tasks, for **48 hours**. The lock holds while a linked PR is open and is renewed each time one of the adopter's PRs is opened or merged. The owner or an admin can release it early.
 - Lock expiry is computed when the task is read (`expires_at < now()` means it's free again), so there is no expiry job.
 - Only PRs authored by the current adopter get linked. Anyone else's PR gets a failing check that says "adopt this task first".
-- After "Reject with adjustments" (request changes), the adopter has **72 hours** to push a fix. Otherwise the PR is closed and the task reopens.
-- A question waiting on the owner doesn't put the lock at risk: the open draft PR already holds it.
+- A question on a draft PR puts the task in the owner's hands. The contributor doesn't wait for the answer, and the open draft PR holds the task until the owner settles it.
 - The adopter can hand back a task or a milestone any time none of their PRs is open; the remaining tasks reopen.
 
-Task statuses: `open` -> `adopted` -> `in_review` -> `changes_requested` -> `in_review` -> `merged`. A task goes back to `open` on reject, lock expiry, a missed fix window, or a hand-back. It becomes `closed` when the owner withdraws it.
+Task statuses: `open` -> `adopted` -> `in_review` -> `merged`. A task goes back to `open` when the owner reopens it, the lock expires, or it's handed back. It becomes `closed` when the owner withdraws it. (Milestone 1's schema also has `changes_requested` and `fix_round`; they're no longer used, since contributors don't do fix rounds.)
 
 Milestone statuses: `open` -> `in_progress` (any task adopted or merged) -> `done` (all tasks merged). Project statuses: `open` -> `done` or `closed`.
 
 ## Review-friendly PRs
 
-A PR only reaches the owner when it is small, tied to one task, and passes every check. PRs with failing checks go back to the contributor on the task page; the owner never spends usage on them.
+A PR only reaches review when it is small, tied to one task, and passes every check. A PR with failing checks shows its results on the task page and the owner's pages; the owner fixes what's free to fix (a PR body edit, say) or reopens the task, without spending agent usage on it. The contributor is never asked to fix it.
 
 PR rules:
 - One task, one PR. Body starts with `Task: <task id>` so the site links it. A milestone is several tasks, so several PRs.
 - Stay under the task's size cap.
 - Touch only the brief's allowed paths. No unrelated reformatting or renaming.
 - All CI checks pass before it shows up for review.
-- Self-review first: the agent re-reads its own diff against every acceptance criterion and runs the test command before it finishes.
+- Self-review first: the agent re-reads its own diff against every acceptance criterion, runs the test command, and checks the PR's shape against these rules before it finishes.
 - Leave out what the site can work out for free: the files changed, line counts and CI results come from GitHub.
 - State which agent and model wrote it.
 - Branches only, no forks.
@@ -359,19 +370,18 @@ The owner reviews every PR with their own agent. The site prepares a **review pa
 The owner's agent answers with one of three outcomes, which the owner carries out:
 
 - **Accept:** the owner merges on GitHub. When GitHub reports the merge, the task closes, the milestone moves on, and the contributor gets a "helped ship" entry.
-- **Reject with adjustments** (request changes): the App posts a structured GitHub comment (criterion, problem, expected fix), the same format the contributor's agent reads. The contributor's agent fixes the work and adds a short fix report that maps each item to new evidence. The re-review packet shows only what changed since the last review (GitHub's compare API) plus the fix report.
-  - **Guided users get one round of fixes.** They get a **Continue in Claude** button with the PR link and the owner's comments filled in. If the second try still isn't right, the PR closes and the task goes back on the board, marked for developers. Unconfirmed: whether a new web session can pick up the existing PR's branch. If it can't, the fix arrives as a new PR that replaces the old one.
-- **Reject outright:** the App closes the PR with a reason and the task reopens for others. For work that isn't worth fixing.
+- **Fix, then accept:** for small problems, the owner's agent fixes them in the same review session instead of sending the PR back: on the PR's branch if the session can work on it (unconfirmed), otherwise as a small PR into that branch. Then the owner merges, and the contributor still gets the "helped ship" entry. PR linking and the checks ignore PRs that don't target the default branch, so a fix PR into a contributor's branch isn't flagged.
+- **Reopen:** for work that isn't worth fixing. The owner gives a short reason; the App closes the PR with it, the reason is added to the task's brief so the next person doesn't repeat it, and the task goes back on the board. The owner can mark it for developers only (say, after a guided user's try). The contributor isn't asked to do anything.
 
-### Questions between agents
+### Questions for the owner
 
-Agents can't talk live: each one runs in its own person's session, and the site never runs one. They talk asynchronously on the draft PR that Claude Code opens anyway:
+Agents can't talk live: each one runs in its own person's session, the site never runs one, and a stopped session can't be woken up. So a question never waits for its answer:
 
-- **Ask rarely.** By default the contributor's agent writes down an assumption under "Not done or assumed" and carries on; the owner corrects it at review if needed. It asks and waits only when a wrong guess would waste the whole run.
-- **Ask on the PR.** A PR comment starting `Question for owner:`, with one question, the options the agent sees, and the one it will take by default.
-- **The site flags it.** It picks the comment up from the `issue_comment` webhook, marks the task "waiting on owner" on the task page and the owner's pages, and offers **Answer in Claude** (the question and the brief filled in). The owner can also just reply on GitHub.
-- **Answer on the PR.** The owner's reply goes on the PR, and the contributor's Continue in Claude picks it up.
-- The open draft PR keeps the 48-hour lock alive while they wait. A direct agent-to-site channel comes later, with the MCP server.
+- **Ask rarely.** Planning settles most questions ahead of time in each brief. By default the contributor's agent writes down an assumption under "Not done or assumed" and carries on; the owner corrects it at review if needed.
+- **Ask and end the run.** Only when a wrong guess would waste the whole run, the agent opens a draft PR with what it has and a comment starting `Question for owner:` (one question, the options it sees, and the one it would take), then ends the run. The contributor's part is done.
+- **The site flags it.** It picks the comment up from the `issue_comment` webhook, marks the task "waiting on owner" on the task page and the owner's pages, and offers **Answer in Claude** (the question, the brief and the draft PR filled in).
+- **The owner settles it,** with their agent or by hand: finish the work on the draft PR (as in Fix, then accept), or write the answer into the brief and reopen the task for anyone to take on. The contributor is never asked to come back, though they're welcome to take the reopened task again.
+- A direct agent-to-site channel comes later, with the MCP server.
 
 ### Unreviewed-merge alert
 
@@ -422,7 +432,7 @@ Milestone 1 created users, repos, tasks, adoptions, submissions, reviews, jobs, 
 | milestones (new) | project_id, position, title, goal, status (open, in_progress, done) |
 | tasks | repo_id, project_id and milestone_id (new, optional), position (new), owner_id, title, kind (code or other; new), brief (the structured fields; new), brief_md, size_tier (small, medium, large), allowed_paths, status |
 | adoptions | task_id, milestone_id (new, set for whole-milestone adoptions), user_id, expires_at, status (active, released, expired, completed) |
-| submissions | task_id, pr_number, head_sha, author_id, check_results, usage_note, fix_round, last_reviewed_sha (planned, Milestone 4: re-reviews read only what changed), status |
+| submissions | task_id, pr_number, head_sha, author_id, check_results, usage_note, fix_round (unused: contributors don't do fix rounds), status |
 | questions (planned, Milestone 4) | submission_id, github_comment_id, asked_at, answered_at |
 | reviews | submission_id, reviewer_id, decision, comments |
 | jobs | type, payload, status, attempts, run_after, dedupe_key |
@@ -459,7 +469,7 @@ Work through these in order. Finish each one (tests passing) before starting the
 - Post a single task, or a project with milestones and tasks. Task form with the brief template, output, allowed paths, estimate and the brief checker.
 - "How much do you want to take on?" on the profile and the board; the board shows work that fits, grouped by project.
 - Adopt a task or a whole milestone, with the 48-hour lock computed on read; hand back a milestone.
-- "Start in Claude" link (with the project and milestone goals), "Copy brief", and the guided walkthrough ("wait for the PR, then click Check for my PR", no Create PR step).
+- "Start in Claude" link (with the project and milestone goals), "Copy brief", and the guided walkthrough (no Create PR step; since Milestone 3 it ends when the PR opens, with no Check for my PR step).
 - Update Milestone 1 pieces: posting needs write access only (no `ai-team` requirement), and the welcome question becomes "Have you worked with a coding agent like Claude Code before?".
 - Done when: a coworker with write access posts a project with two milestones; someone who picked "a quick run" sees only Small tasks; a different member adopts a whole milestone; adopting any of its tasks again is blocked; the lock lapses at 48 hours (tested with a fake clock); and "Start in Claude" opens a session with the repo and brief filled in.
 - How it was checked (2026-11-23): 169 tests, plus a live run against the `PromptIn-test` org with `PromptIn-test/pitch-in-sample` (a public copy of the prototype's sample repo, sample data). The repo connected with CI and `PROJECT_BRIEF.md` read. A project with two milestones and four tasks was posted through the forms, and the brief checker caught a bad brief. "A quick run" showed only the two Small tasks. A sample user (`src/scripts/sample-adopt.ts`, sample data, standing in for a second person) adopted milestone 1, and its tasks then showed as taken with no way to adopt them. The 48-hour lapse is covered by fake-clock tests. Start in Claude opened Claude Code on the web with the full prompt filled in, but the org repo wasn't preselected because Claude's GitHub App isn't installed on `PromptIn-test` yet (setup checklist step 5); the same link format did preselect a repo that Claude's App can see. **Left to do:** install Claude's GitHub App on `PromptIn-test` and open Start in Claude once more.
@@ -474,14 +484,15 @@ Comes before checks and review, so that Milestone 4 itself can be posted on the 
 - How it was checked (2026-11-24): 225 tests, plus a live run on `PromptIn-test/pitch-in` with Claude's GitHub App installed on the org. Plan in Claude (a 3,173-character link) opened the owner's session on the repo with "Milestone 4: Checks and review" of `plan.md`; the agent answered with one JSON block of 3 milestones and 14 tasks. The import flagged 11 problems: three files that an earlier task creates (`src/lib/checks/types.ts` twice, `src/lib/review-packet.ts`), seven tasks without a test command, and one link outside the repo; plus 29 warnings for allowed paths the tasks will create. After fixing the JSON by hand, the whole project posted in one go (PI-9 to PI-22). A sample user (sample data) took on milestone 1, and PI-9's Start in Claude link (6,636 characters) opened Claude Code on the repo with the full prompt and the contributor rules filled in. The run led to two prompt changes (fill in every field, testCommand included; files must exist now, not be created by an earlier task) and to folding long warning lists in the preview.
 
 ### Milestone 4: Checks and review
-- Link PRs from the `Task: <id>` line, with the paste-the-link fallback; only the adopter's PRs link. Drafts link and get checked.
+Reworked on 2026-11-24 so a contributor's part ends at the PR (see [A contributor's part ends at the PR](#a-contributors-part-ends-at-the-pr)); its tasks on the board were rewritten to match.
+- Link PRs from the `Task: <id>` line, with the paste-the-link fallback (for the adopter or the task owner); only the adopter's PRs link. Drafts link and get checked. PRs that don't target the default branch are ignored.
 - The seven checks (template, size, scope, secrets, CI, criteria, evidence) as plain code, posted as one GitHub check run; gitleaks joins the image.
-- The review packet and Review in Claude for the owner's agent: accept (merge on GitHub), reject with adjustments, or reject outright, as GitHub comments. Re-reviews read only what changed since the last review, plus the contributor's fix report.
-- Questions between agents on the draft PR, with "waiting on owner" and Answer in Claude.
+- The review packet and Review in Claude for the owner's agent: accept (merge on GitHub), fix then accept (the owner's agent fixes small problems itself), or reopen with the reason added to the brief.
+- Questions for the owner: the contributor's agent asks on a draft PR and ends the run; the site shows "waiting on owner" and Answer in Claude; the owner finishes the work or reopens the task with the answer in its brief.
 - The task closes and the milestone moves on when GitHub reports the merge; milestone adoptions renew their lock on each PR.
-- The 72-hour fix window; one fix round with "Continue in Claude" for guided users.
+- Failed checks go to the owner: the task page and the owner's pages show them, with free ways out (edit the PR on GitHub, or reopen). The contributor isn't asked to fix anything.
 - Unreviewed-merge alert, using GitHub's collaborator permission API to recognise repo admins.
-- Done when: an oversized PR and a PR with a dangling evidence pointer are flagged; a clean one reaches the owner, whose agent reviews it through Review in Claude; a reject-with-adjustments round re-reviews only the changed lines; a question on a draft PR shows as waiting on the owner; merging on GitHub closes the task and moves its milestone to the next task; and a merge by the wrong person sets off the alert.
+- Done when: an oversized PR and a PR with a dangling evidence pointer are flagged; a clean one reaches the owner, whose agent reviews it through Review in Claude; a PR with a small problem is fixed by the owner's agent and merged; a reopened task goes back on the board with the reason in its brief; a question on a draft PR shows as waiting on the owner; nothing asks the contributor for anything after their PR opens; merging on GitHub closes the task and moves its milestone to the next task; and a merge by the wrong person sets off the alert.
 
 ### Milestone 5: Demo-org trial
 - A free GitHub org I own, with public sample repos of different kinds (a small website, an automation script, a research repo) and sample projects and tasks, clearly labeled as sample data. Public repos get branch protection for free.
@@ -527,14 +538,15 @@ Hitting them is the case for the pitch list.
 | The company moves to pay-per-use Enterprise billing | There'd be no leftover usage: a guided user's run would cost the same as the owner's. Revisit the pitch if that happens |
 | No branch protection on a free GitHub org | Unreviewed-merge alert, a guided walkthrough that never shows merging, low-stakes repos, GitHub Team on the pitch list |
 | The smee relay exposes webhook contents and drops events while offline | Unguessable channel URL, low-stakes repos, redelivery from GitHub, direct webhooks on the pitch list |
-| Low-quality PRs waste owners' time and usage | Per-task caps, big work split into milestone tasks, CI required, the criteria and evidence checks, failing PRs never reach the owner, one fix round for guided users, admins can block |
-| Planning and reviews use up the owner's Claude usage | Free checks first; contributors self-review and write the pointer-based PR format; the owner's agent reads a review packet, not the repo; re-reviews read only what changed; agents ask questions only when a wrong guess would waste the run |
+| Low-quality PRs waste owners' time and usage | Per-task caps, big work split into milestone tasks, CI required, the criteria and evidence checks, failing PRs never reach review, the owner reopens with notes for the next person, admins can block |
+| Planning and reviews use up the owner's Claude usage | Free checks first; contributors self-review and write the pointer-based PR format; the owner's agent reads a review packet, not the repo; small fixes happen once, in the owner's own review session; planning settles questions up front |
 | A contributor's agent writes evidence pointers that look right but aren't | The evidence check proves each pointer lands in the diff; the owner's agent checks what it points at |
 | Guided users can't judge the result, and the owner may not be able to either (the prototype review took 30 seconds on code the reviewer couldn't read) | Checks gate every PR, the owner reviews every PR with their own agent from a review packet, and rejections are tracked by profile |
 | Non-code work (research, design) is hard to check automatically | Yes/no acceptance criteria, an Output field naming the file and format, a lint or link-check CI, "cite every source" constraints, and the owner reviews the rendered output |
 | Owners post work too big for one run | Estimates with caps, the 500-word brief limit, and milestones to split big work |
 | Secrets leaking through briefs or PRs | Secret scanning on both; `.env.example` instead of real values |
 | Prompt injection in a brief aimed at contributors' agents. More people can post now | Only coworkers with write access post; the brief checker flags commands and links outside the repo; admins can block |
+| Contributors stop helping because of follow-up chores | Their part ends at the PR: no questions to answer, no fix rounds, no re-runs after failed checks. Planning settles questions up front, the contributor's agent checks its own PR's shape, and the owner handles everything after the PR opens |
 | Two people adopting the same work | 48-hour adoption lock, covering a milestone's open tasks too |
 | Nobody picks up work | The board shows work that fits each person's choice, a "helped ship" list, a monthly report to the admin; the trial measures it |
 | Main admin leaves the company | The role is handed over in the admin screen; GitHub org owners are admins too |
@@ -545,7 +557,7 @@ Hitting them is the case for the pitch list.
 - [ ] Which two or three repos go first, and of which kinds?
 - [ ] Which machine runs the trial (decided with IT)?
 - [ ] Are trial users mostly on the same office network? If most work remotely, the trial needs a free tunnel instead.
-- [ ] From Milestone 2 on, live checks need a second GitHub account or a second tester.
+- [ ] From Milestone 2 on, live checks need a second GitHub account or a second tester. A tester is lined up; bring them in only when a step truly needs a second real account (PR linking in Milestone 4 will).
 
 ## Notes for Claude Code
 

@@ -94,7 +94,8 @@ export function buildPrompt({ task, repo, project, milestone }: PromptInput): st
 
   // Contributor rules (plan.md, "How the brief reaches the agent"): only the
   // owner's usage is kept low, so the contributor's agent is asked to be
-  // thorough and to review its own work twice.
+  // thorough and to review its own work twice. The contributor's part ends
+  // when the PR opens: nothing here ever asks them to wait or come back.
   const rules = [
     "- Be thorough: getting this right matters more than finishing fast. Read as much of the repo as you need, write thorough tests, and run the full test suite (for docs, every lint and link check), not only the brief's test command.",
     `- Off-limits paths (never change these): ${repo.offLimitsPaths.join(", ") || "none"}`,
@@ -109,13 +110,14 @@ export function buildPrompt({ task, repo, project, milestone }: PromptInput): st
       ? "- There's no test command for this task, so check the result against every acceptance criterion yourself."
       : "- The test command and the full suite must pass before you finish.",
     "- Don't run commands other than the repo's own setup and test commands.",
-    '- If something is unclear, take the likeliest reading, note it under "Not done or assumed" and carry on. Ask only when a wrong guess would waste the whole run: open the PR as a draft, add a comment starting "Question for owner:" with one question, the options you see and the one you\'ll take by default, then stop and wait for the answer there.',
+    '- If something is unclear, take the likeliest reading, note it under "Not done or assumed" and carry on. Only when a wrong guess would waste the whole run: open the PR as a draft with what you have, add a comment starting "Question for owner:" with one question, the options you see and the one you would take, and end the run there. Don\'t wait for an answer: the owner takes it from there.',
     "- Before you open the PR, review your own diff a second time, independently, against every acceptance criterion, for example with a fresh subagent asked to find problems. Fix what it finds and run the tests again.",
+    "- Then check its shape yourself, the way Pitch In will: under the line cap, only allowed paths touched, every template section filled, every criterion copied word for word with its pointer.",
   );
   lines.push(`How to work:\n${rules.join("\n")}`);
 
   lines.push(
-    `When you're done, open a pull request from a branch in this repo (not a fork), with this template as its body, starting with the line \`Task: ${ref}\`. Copy every acceptance criterion word for word, tick it, and point to where it's met as file:line ("CI" for tests passing in CI). Leave out the files changed, line counts and CI results: GitHub shows those.\n\n${prTemplate(ref, task.acceptance)}`,
+    `When you're done, open a pull request from a branch in this repo (not a fork), with this template as its body, starting with the line \`Task: ${ref}\`. Copy every acceptance criterion word for word, tick it, and point to where it's met as file:line ("CI" for tests passing in CI). Leave out the files changed, line counts and CI results: GitHub shows those.\n\n${prTemplate(ref, task.acceptance)}\n\nOnce the PR is open, your part is done: the owner reviews it and handles any fixes, so don't wait for a reply.`,
   );
 
   return lines.join("\n\n") + "\n";
@@ -141,11 +143,13 @@ export function startInClaudeUrl(prompt: string, repoFullName: string): string {
   return `https://claude.ai/code?prompt=${enc(prompt)}&repositories=${enc(repoFullName)}`;
 }
 
-/** The Guided walkthrough. It never mentions merging: the owner takes it from there. */
+/**
+ * The Guided walkthrough. It never mentions merging, and never asks the person
+ * to come back: once the PR is open, the owner takes it from there.
+ */
 export const GUIDED_STEPS = [
   "Click Start in Claude. Claude Code opens with this repo and the task already filled in.",
   "Press Enter. Claude works on its own, so you don't need to watch. It can take a while.",
   "When Claude is done, it opens a pull request on GitHub by itself. You don't need to click anything there.",
-  "Come back to this page and click Check for my PR.",
-  "The automatic checks run, and the owner takes it from here.",
+  "That's it: your part is done. The automatic checks run, and the owner takes it from here.",
 ];

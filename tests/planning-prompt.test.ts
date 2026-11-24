@@ -32,6 +32,10 @@ describe("the planning prompt", () => {
     expect(p).toContain("Never read the whole codebase");
   });
 
+  it("settles open questions in the brief, so contributors never need to ask", () => {
+    expect(buildPlanningPrompt(input())).toContain("say so in that task's constraints, so contributors never need to ask");
+  });
+
   it("has every splitting rule from plan.md", () => {
     const p = buildPlanningPrompt(input({ repo: { ...input().repo, largestTier: "medium" } }));
     expect(p).toContain("One task is one PR and one session");
