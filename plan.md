@@ -161,8 +161,8 @@ Every task ships with a brief written so an agent with no prior knowledge of the
 
 - **Plan in Claude:** the "Post a project" page has a link, built like Start in Claude, plus a copy-paste version. It opens the owner's own Claude Code session on the repo with a fixed planning prompt. The prompt is the same for every project, so the link stays well inside the tested length.
 - **It starts from a plan the owner already has.** The owner names a plan file and a section (for example "Milestone 4 of `plan.md`"), or describes the goal in the session when there's no plan. Splitting is the one step the owner's agent does, on purpose: it's a small, one-time cost, it saves a separate review of someone else's breakdown, and the acceptance criteria it writes are what every later review checks against.
-- To keep that cost small, the agent reformats the plan rather than redesigning it: it reads that section, `PROJECT_BRIEF.md` and the repo map, and opens a file only to confirm a path. It never reads the whole codebase; contributors do that.
-- It splits the work into milestones and tasks by these rules: one task is one PR and one session; each estimate is within the repo's largest; files to look at are real paths; briefs stay under 500 words; tasks are in dependency order; each milestone ends at something usable.
+- To keep that cost small, the agent reformats the plan rather than redesigning it: it reads that section, `PROJECT_BRIEF.md` and the repo map, and opens a file only to confirm a path, or the schema behind a constraint (PI-9's brief asked for unlinked PRs in a table whose task and author can't be empty). It never reads the whole codebase; contributors do that.
+- It splits the work into milestones and tasks by these rules: one task is one PR and one session; each estimate is within the repo's largest; files to look at are real paths; acceptance criteria are ones a single pointer can meet ("Tests cover X", not "tests for X are written and pass": CI proves they pass); briefs stay under 500 words; tasks are in dependency order; each milestone ends at something usable.
 - It answers with one JSON block in the import format: the project's title and goal, each milestone's title and goal, and every Task Brief field for each task.
 - **Import:** the owner pastes the block into the site. The site parses it, runs the brief checker on every task (free), and shows one preview page with all the flags. The owner fixes them (by hand or by asking their agent), then posts the whole project at once. Tasks stay editable until someone takes them on.
 - JSON rather than Markdown because it parses exactly; the preview page shows it to the owner as readable briefs.
@@ -303,12 +303,12 @@ PR rules:
 - Touch only the brief's allowed paths. No unrelated reformatting or renaming.
 - All CI checks pass before it shows up for review.
 - Self-review first: the agent re-reads its own diff against every acceptance criterion, runs the test command, and checks the PR's shape against these rules before it finishes.
-- Leave out what the site can work out for free: the files changed, line counts and CI results come from GitHub.
+- Leave out what the site can work out for free: the files changed, commits, line counts and CI results come from GitHub.
 - State which agent and model wrote it.
 - Branches only, no forks.
 - Draft PRs are fine: the checks run on them. The owner's first step on a draft is **Ready for review**, because GitHub won't merge a draft.
 
-Required PR template. Every acceptance criterion from the brief, word for word, ticked, with a pointer to where it's met, so the owner's agent checks lines instead of searching:
+Required PR template. Every acceptance criterion from the brief, word for word, ticked, with exactly one pointer to where it's met, so the owner's agent checks lines instead of searching. A pointer is `file:line` or `file:start-end` with the full path, on lines the diff changed, or `CI` for a criterion that says all tests pass; anything else worth reading goes under Where to look. How it was tested ends with one line on what the second review pass found:
 
 ```markdown
 Task: PI-12
@@ -326,6 +326,7 @@ Task: PI-12
 
 ## How it was tested
 `npm test` -> 12 passed, 0 failed
+Second review pass: <what it found and fixed, or "nothing new">
 
 ## Not done or assumed
 - Numbers are rejected, not converted (the brief didn't say which)
@@ -571,6 +572,8 @@ Hitting them is the case for the pitch list.
 ## Prompt for the next milestone
 
 Milestone 4 is posted on the board as tasks (project "Pitch In checks and review", PI-9 to PI-22, on `PromptIn-test/pitch-in`), so it's built task by task: whoever takes one on uses its Start in Claude link, and each PR is reviewed on GitHub with the owner's agent until Milestone 4's own review tools exist. Merged work lands in the `PromptIn-test/pitch-in` copy and needs bringing back to `HakimGtat/pitch-in`.
+
+PI-9 (Link PRs to tasks) was the first, merged on 2026-11-24 after a dogfood run: a sample user (sample data) took milestone 1, the owner ran its Start in Claude link, and the PR passed every check by hand except one evidence pointer, fixed with a PR-body edit. That run led to the pointer, second-review and schema rules above. After each merge: pull the copy's `main` fast-forward only; until PI-21 lets the site learn about merges, run `src/scripts/sample-adopt.ts --sample-data mark-merged <taskId>` so the milestone's next task comes up; rebuild Docker; and push to both repos so they stay identical.
 
 ## Sources
 

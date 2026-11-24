@@ -52,7 +52,7 @@ export function buildPlanningPrompt({ repo, planFile, section }: PlanningInput):
     `- estimate: small (up to 300 lines changed), medium (1,000) or large (2,000), tests included. This repo allows ${repo.largestTier} at most.`,
     "- files: real paths that exist now, not ones an earlier task creates; five at most. For new work, the closest file or folder.",
     `- allowedPaths: globs the PR may touch, like "src/upload/**"${repo.offLimitsPaths.length ? `; never these off-limits paths: ${repo.offLimitsPaths.join(", ")}` : ""}.`,
-    "- acceptance: yes/no checks a reviewer can tick in seconds. Every review checks against them.",
+    '- acceptance: yes/no checks a reviewer can tick in seconds. Every review checks against them. Say "Tests cover X"; CI proves they pass.',
     '- testCommand: one plain command (no ; && | $( ), from the repo\'s own commands. Docs or research: the lint or link check, or "none".',
     '- kind "other" is for research, writing and design, and needs output: the file to write and its format.',
     "- Optional: current and expected (bugs, with steps to reproduce), outOfScope, example.",
@@ -63,7 +63,7 @@ export function buildPlanningPrompt({ repo, planFile, section }: PlanningInput):
   return [
     `Plan a project for Pitch In, our board where coworkers each take on one task in their own Claude session, in the GitHub repo ${repo.fullName}. Split the plan into milestones and tasks. Don't change, commit or push anything, and don't open a pull request.`,
     what,
-    `Keep it cheap: reformat the plan, don't redesign it. ${reading} Open another file only to confirm a path or a name (git ls-files lists them). Never read the whole codebase; contributors do that. Where the plan is unclear, take the simplest reading and say so in that task's constraints, so contributors never need to ask.`,
+    `Keep it cheap: reformat the plan, don't redesign it. ${reading} Open another file only to confirm a path or a name (git ls-files lists them), or the schema behind a constraint. Never read the whole codebase; contributors do that. Where the plan is unclear, take the simplest reading and say so in that task's constraints, so contributors never need to ask.`,
     `Splitting rules:\n${rules.join("\n")}`,
     `Answer with only one \`\`\`json block in this format, every field filled in, testCommand included:\n\`\`\`json\n${IMPORT_SKELETON}\n\`\`\``,
   ].join("\n\n") + "\n";

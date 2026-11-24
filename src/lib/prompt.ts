@@ -35,7 +35,7 @@ ${criteria}
 - <file:lines>: <what to read first, and why>
 
 ## How it was tested
-<each command you ran and its result>
+<each command you ran and its result, then one line on what your second review pass found>
 
 ## Not done or assumed
 - <what you left out and every assumption you made, or "Nothing">
@@ -112,12 +112,12 @@ export function buildPrompt({ task, repo, project, milestone }: PromptInput): st
     "- Don't run commands other than the repo's own setup and test commands.",
     '- If something is unclear, take the likeliest reading, note it under "Not done or assumed" and carry on. Only when a wrong guess would waste the whole run: open the PR as a draft with what you have, add a comment starting "Question for owner:" with one question, the options you see and the one you would take, and end the run there. Don\'t wait for an answer: the owner takes it from there.',
     "- Before you open the PR, review your own diff a second time, independently, against every acceptance criterion, for example with a fresh subagent asked to find problems. Fix what it finds and run the tests again.",
-    "- Then check its shape yourself, the way Pitch In will: under the line cap, only allowed paths touched, every template section filled, every criterion copied word for word with its pointer.",
+    "- Then check its shape yourself, the way Pitch In will: under the line cap, only allowed paths touched, every template section filled, every criterion copied word for word with one pointer that lands on lines your diff changed.",
   );
   lines.push(`How to work:\n${rules.join("\n")}`);
 
   lines.push(
-    `When you're done, open a pull request from a branch in this repo (not a fork), with this template as its body, starting with the line \`Task: ${ref}\`. Copy every acceptance criterion word for word, tick it, and point to where it's met as file:line ("CI" for tests passing in CI). Leave out the files changed, line counts and CI results: GitHub shows those.\n\n${prTemplate(ref, task.acceptance)}\n\nOnce the PR is open, your part is done: the owner reviews it and handles any fixes, so don't wait for a reply.`,
+    `When you're done, open a pull request from a branch in this repo (not a fork), with this template as its body, starting with the line \`Task: ${ref}\`. Copy every acceptance criterion word for word, tick it, and give it exactly one pointer to where it's met: file:line or file:start-end, with the full path, on lines your diff changed. Write "CI" instead only for a criterion that says all tests pass. Put anything else worth reading under "Where to look". Leave out the files changed, commits, line counts and CI results: GitHub shows those.\n\n${prTemplate(ref, task.acceptance)}\n\nOnce the PR is open, your part is done: the owner reviews it and handles any fixes, so don't wait for a reply.`,
   );
 
   return lines.join("\n\n") + "\n";

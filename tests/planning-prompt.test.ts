@@ -54,6 +54,15 @@ describe("the planning prompt", () => {
     expect(buildPlanningPrompt(input({ repo: { ...input().repo, offLimitsPaths: [] } }))).not.toContain("off-limits");
   });
 
+  // PI-9's brief said "Tests for the linking rule are written and pass", which
+  // no single pointer can meet, and told the contributor to store unlinked PRs
+  // in submissions, whose task and author columns can't be empty.
+  it("asks for criteria a pointer can meet, and checks the schema behind a constraint", () => {
+    const p = buildPlanningPrompt(input());
+    expect(p).toContain('Say "Tests cover X"; CI proves they pass.');
+    expect(p).toContain("or the schema behind a constraint");
+  });
+
   it("asks for files that exist now, not ones an earlier task creates", () => {
     // The live Milestone 4 run listed src/lib/checks/types.ts, which an earlier task creates.
     expect(buildPlanningPrompt(input())).toContain("files: real paths that exist now, not ones an earlier task creates");

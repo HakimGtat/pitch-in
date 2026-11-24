@@ -144,9 +144,22 @@ describe("the contributor rules", () => {
 
   it("ask for word-for-word criteria with file:line pointers, and nothing GitHub already shows", () => {
     expect(p).toContain("Copy every acceptance criterion word for word");
-    expect(p).toContain('file:line ("CI" for tests passing in CI)');
-    expect(p).toContain("Leave out the files changed, line counts and CI results");
+    expect(p).toContain("Leave out the files changed, commits, line counts and CI results");
     expect(p).toContain(prTemplate("PI-12", input().task.acceptance));
+  });
+
+  // The PI-9 dogfood run pointed one criterion at two file names plus "(CI)",
+  // used shorthand like ":116", and put extra test pointers in brackets, which
+  // the evidence check (one pointer per criterion) can't read.
+  it("pin down one full pointer per criterion, on changed lines, and CI only for all tests passing", () => {
+    expect(p).toContain("exactly one pointer to where it's met: file:line or file:start-end, with the full path, on lines your diff changed");
+    expect(p).toContain('Write "CI" instead only for a criterion that says all tests pass');
+    expect(p).toContain('Put anything else worth reading under "Where to look"');
+    expect(p).toContain("with one pointer that lands on lines your diff changed");
+  });
+
+  it("ask what the second review pass found, so the owner can see it ran", () => {
+    expect(p).toContain("<each command you ran and its result, then one line on what your second review pass found>");
   });
 
   it("keep the rules that were already there", () => {
