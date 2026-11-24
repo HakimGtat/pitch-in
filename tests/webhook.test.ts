@@ -1,10 +1,14 @@
 import { createHmac } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { adoptTask } from "@/lib/adoption";
+import { emptyBrief } from "@/lib/brief";
 import type { Db } from "@/lib/db/client";
-import { auditLog, jobs, repos } from "@/lib/db/schema";
+import { auditLog, jobs, repos, submissions } from "@/lib/db/schema";
 import { receiveWebhook, verifyWebhookSignature } from "@/lib/github/webhook";
 import { runNextJob } from "@/lib/jobs";
 import { connectRepo } from "@/lib/repos";
+import { postTask } from "@/lib/work";
 import { createHandlers, handlers } from "@/worker/handlers";
 import { createTestDb, insertUser } from "./helpers/db";
 import { fakeGitHub } from "./helpers/github";
@@ -128,5 +132,68 @@ describe("push webhooks", () => {
     expect((await db.select().from(repos))[0].projectBrief).toBe("old");
     await send("refs/heads/main", "push-2");
     expect((await db.select().from(repos))[0].projectBrief).toBe("new brief");
+  });
+});
+
+describe("pull_request webhooks", () => {
+  let db: Db;
+  let close: () => Promise<void>;
+
+  beforeAll(async () => {
+    ({ db, close } = await createTestDb());
+  });
+  afterAll(() => close());
+
+  it("link an adopter's PR through the worker, and note why others don't link", async () => {
+    const fake = fakeGitHub();
+    fake.addRepo(42, "acme/site", { ".github/workflows/ci.yml": "x", "PROJECT_BRIEF.md": "brief", "src/a.ts": "x" }, { olive: "admin" });
+    const olive = await insertUser(db, { handle: "olive" });
+    const alice = await insertUser(db, { handle: "alice" });
+    const connected = await connectRepo(db, fake.gh, olive.id, 42);
+    if (!connected.ok) throw new Error("not connected");
+    const posted = await postTask(
+      db,
+      fake.gh,
+      olive.id,
+      { repoId: connected.repoId },
+      {
+        title: "A task",
+        kind: "code",
+        sizeTier: "small",
+        allowedPaths: ["src/**"],
+        brief: { ...emptyBrief(), goal: "Do it.", files: ["src/a.ts"], acceptance: ["Done"], testCommand: "npm test", constraints: "None." },
+      },
+      true,
+    );
+    if (!posted.ok) throw new Error("not posted");
+    await adoptTask(db, alice.id, posted.taskId);
+    const run = createHandlers({ repoGitHub: () => fake.gh });
+
+    const send = async (id: string, login: string, over: Record<string, unknown> = {}) => {
+      const body = JSON.stringify({
+        action: "opened",
+        repository: { id: 42, full_name: "acme/site", default_branch: "main" },
+        pull_request: {
+          number: Number(id.split("-")[1]),
+          draft: true,
+          body: `Task: PI-${posted.taskId}`,
+          user: { login },
+          base: { ref: "main" },
+          head: { sha: "abc" },
+          ...over,
+        },
+      });
+      await receiveWebhook(db, { secret, rawBody: body, event: "pull_request", deliveryId: id, signature: sign(body) });
+      await runNextJob(db, run, quietLog);
+    };
+
+    await send("pr-1", "alice");
+    await send("pr-2", "mallory");
+    await send("pr-3", "alice", { base: { ref: "alice/feature" } });
+    const rows = await db.select().from(submissions);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ prNumber: 1, taskId: posted.taskId, authorId: alice.id });
+    const unlinked = await db.select().from(auditLog).where(eq(auditLog.action, "pr.unlinked"));
+    expect(unlinked.map((e) => e.target)).toEqual(["acme/site#2"]);
   });
 });

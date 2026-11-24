@@ -5,6 +5,7 @@ import { createRepoGitHub } from "@/lib/github/app";
 import type { RepoGitHub } from "@/lib/github/repos";
 import type { JobHandler, Logger } from "@/lib/jobs";
 import { WEBHOOK_JOB, type GitHubWebhookJob } from "@/lib/github/webhook";
+import { handlePullRequestEvent } from "@/lib/pr-link";
 import { refreshRepo, reposForPush } from "@/lib/repos";
 
 /** What the handlers need from outside. Tests pass a fake GitHub. */
@@ -69,7 +70,23 @@ export async function handleGitHubWebhook(
     return;
   }
 
-  // Pull requests and checks are handled from Milestone 3 on.
+  // A PR event: link the PR to its task (or record why it didn't link).
+  if (job.event === "pull_request") {
+    const repository = obj(body.repository);
+    const [repo] = await reposForPush(db, Number(repository.id));
+    if (!repo) {
+      log.info(`GitHub webhook ${label} on ${str(repository.full_name) ?? "a repo"} that isn't connected; ignored`);
+      return;
+    }
+    const outcome = await handlePullRequestEvent(db, job.action, body, repo);
+    if (!outcome) log.info(`GitHub webhook ${label} needs no linking`);
+    else if (outcome.status === "ignored") log.info(`GitHub webhook ${label}: PR isn't into the default branch; ignored`);
+    else if (outcome.status === "linked") log.info(`GitHub webhook ${label}: PR linked to task ${outcome.taskId}`);
+    else log.info(`GitHub webhook ${label}: PR not linked: ${outcome.reason}`);
+    return;
+  }
+
+  // Checks and merges are handled from the next tasks on.
   log.info(`GitHub webhook ${label} received (delivery ${job.deliveryId}); no action needed yet`);
 }
 

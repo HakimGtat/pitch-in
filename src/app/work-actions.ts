@@ -10,6 +10,7 @@ import { getDb } from "@/lib/db/client";
 import { draftFromValues, valuesFromForm, type TaskFormState } from "@/lib/forms";
 import { createRepoGitHub } from "@/lib/github/app";
 import { splitList } from "@/lib/glob";
+import { linkPastedPr } from "@/lib/pr-link";
 import { connectRepo, parseRepoSettings, refreshRepo, removeRepo, updateRepoSettings } from "@/lib/repos";
 import { fixRequest, previewFlagLines, type ImportPreview } from "@/lib/plan-import";
 import { parseTakeOn } from "@/lib/sizing";
@@ -212,6 +213,15 @@ export async function handBackAction(formData: FormData) {
   await change(`/tasks/${taskId}`, async () => {
     const ids = await handBack(getDb(), user.id, taskId);
     return ids.length > 1 ? `Handed back ${ids.length} tasks. They're on the board again.` : "Handed back. It's on the board again.";
+  });
+}
+
+export async function linkPrAction(formData: FormData) {
+  const user = await requireUser();
+  const taskId = num(formData, "taskId");
+  await change(`/tasks/${taskId}`, async () => {
+    const { prNumber } = await linkPastedPr(getDb(), user.id, taskId, String(formData.get("prUrl") ?? ""));
+    return `PR #${prNumber} is linked to this task.`;
   });
 }
 
