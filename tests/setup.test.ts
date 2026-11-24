@@ -35,7 +35,7 @@ describe("GitHub App manifest", () => {
       pull_requests: "write",
       checks: "write",
     });
-    expect(manifest.default_events).toEqual(["pull_request", "check_suite", "push"]);
+    expect(manifest.default_events).toEqual(["pull_request", "check_suite", "check_run", "push", "issue_comment"]);
   });
 
   it("keeps the App name within GitHub's 34-character limit", () => {

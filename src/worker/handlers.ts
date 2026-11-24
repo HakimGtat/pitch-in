@@ -1,4 +1,9 @@
 import { writeAudit } from "@/lib/audit";
+import { gitleaksScanner } from "@/lib/checks/gitleaks";
+import { parseTaskLine } from "@/lib/checks/pr-body";
+import { CHECKS_JOB, queueChecks, runChecks, type ChecksJob } from "@/lib/checks/run";
+import type { SecretScanner } from "@/lib/checks/secrets";
+import { SITE_CHECK_NAME } from "@/lib/checks/types";
 import { getConfig } from "@/lib/config";
 import type { Db } from "@/lib/db/client";
 import { createRepoGitHub } from "@/lib/github/app";
@@ -8,8 +13,8 @@ import { WEBHOOK_JOB, type GitHubWebhookJob } from "@/lib/github/webhook";
 import { handlePullRequestEvent } from "@/lib/pr-link";
 import { refreshRepo, reposForPush } from "@/lib/repos";
 
-/** What the handlers need from outside. Tests pass a fake GitHub. */
-export type HandlerDeps = { repoGitHub: () => RepoGitHub };
+/** What the handlers need from outside. Tests pass a fake GitHub and a fake scanner. */
+export type HandlerDeps = { repoGitHub: () => RepoGitHub; scanner?: () => SecretScanner };
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v && typeof v === "object" ? (v as Obj) : {});
@@ -21,6 +26,9 @@ const INSTALLATION_ACTIONS: Record<string, string> = {
   suspend: "github.app_suspended",
   unsuspend: "github.app_unsuspended",
 };
+
+/** pull_request actions that can change what the checks say. */
+const CHECKED_ACTIONS = new Set(["opened", "reopened", "edited", "synchronize", "ready_for_review", "converted_to_draft"]);
 
 export async function handleGitHubWebhook(
   db: Db,
@@ -49,18 +57,18 @@ export async function handleGitHubWebhook(
     return;
   }
 
+  const repository = obj(body.repository);
+  const [repo] = Number(repository.id) ? await reposForPush(db, Number(repository.id)) : [];
+
   // A push to a connected repo's default branch: re-read PROJECT_BRIEF.md and CI.
   if (job.event === "push") {
-    const repository = obj(body.repository);
-    const githubRepoId = Number(repository.id);
     const branch = str(repository.default_branch);
-    if (!githubRepoId || !branch || str(body.ref) !== `refs/heads/${branch}`) {
+    if (!branch || str(body.ref) !== `refs/heads/${branch}`) {
       log.info(`GitHub webhook push to a branch other than the default (delivery ${job.deliveryId}); nothing to refresh`);
       return;
     }
-    const [repo] = await reposForPush(db, githubRepoId);
     if (!repo) {
-      log.info(`GitHub webhook push to ${str(repository.full_name) ?? githubRepoId}, which isn't connected; ignored`);
+      log.info(`GitHub webhook push to ${str(repository.full_name) ?? repository.id}, which isn't connected; ignored`);
       return;
     }
     const updated = await refreshRepo(db, deps.repoGitHub(), repo.id);
@@ -70,14 +78,14 @@ export async function handleGitHubWebhook(
     return;
   }
 
-  // A PR event: link the PR to its task (or record why it didn't link).
-  if (job.event === "pull_request") {
-    const repository = obj(body.repository);
-    const [repo] = await reposForPush(db, Number(repository.id));
-    if (!repo) {
-      log.info(`GitHub webhook ${label} on ${str(repository.full_name) ?? "a repo"} that isn't connected; ignored`);
-      return;
-    }
+  if (!repo && ["pull_request", "check_suite", "check_run"].includes(job.event)) {
+    log.info(`GitHub webhook ${label} on ${str(repository.full_name) ?? "a repo"} that isn't connected; ignored`);
+    return;
+  }
+
+  // A PR event: link the PR to its task (or record why it didn't link), then check it.
+  if (job.event === "pull_request" && repo) {
+    const pr = obj(body.pull_request);
     const outcome = await handlePullRequestEvent(db, job.action, body, {
       id: repo.id,
       fullName: repo.fullName,
@@ -87,18 +95,55 @@ export async function handleGitHubWebhook(
     else if (outcome.status === "ignored") log.info(`GitHub webhook ${label}: PR isn't into the default branch; ignored`);
     else if (outcome.status === "linked") log.info(`GitHub webhook ${label}: PR linked to task ${outcome.taskId}`);
     else log.info(`GitHub webhook ${label}: PR not linked: ${outcome.reason}`);
+
+    const headSha = str(obj(pr.head).sha);
+    const named = outcome?.status === "unlinked" && parseTaskLine(str(pr.body)) !== null;
+    if (job.action && CHECKED_ACTIONS.has(job.action) && headSha && (outcome?.status === "linked" || named)) {
+      await queueChecks(db, { repoId: repo.id, prNumber: Number(pr.number) }, headSha);
+      log.info(`GitHub webhook ${label}: checks queued for PR #${pr.number} at ${headSha.slice(0, 7)}`);
+    }
     return;
   }
 
-  // Checks and merges are handled from the next tasks on.
-  log.info(`GitHub webhook ${label} received (delivery ${job.deliveryId}); no action needed yet`);
+  // The repo's own CI finished: check its PRs again. Our own check run never triggers this.
+  if ((job.event === "check_suite" || job.event === "check_run") && repo) {
+    const thing = obj(job.event === "check_suite" ? body.check_suite : body.check_run);
+    if (job.action !== "completed" || str(thing.name) === SITE_CHECK_NAME || str(obj(thing.app).name)?.startsWith("Pitch In")) {
+      log.info(`GitHub webhook ${label}: nothing to check again`);
+      return;
+    }
+    const headSha = str(thing.head_sha);
+    const prs = Array.isArray(thing.pull_requests) ? thing.pull_requests.map(obj) : [];
+    for (const pr of prs) {
+      if (!headSha || !Number(pr.number)) continue;
+      await queueChecks(db, { repoId: repo.id, prNumber: Number(pr.number) }, headSha);
+    }
+    log.info(`GitHub webhook ${label}: checks queued again for ${prs.length} PR(s)`);
+    return;
+  }
+
+  log.info(`GitHub webhook ${label} received (delivery ${job.deliveryId}); no action needed`);
+}
+
+export async function handleChecksJob(db: Db, job: ChecksJob, log: Logger, deps: HandlerDeps): Promise<void> {
+  const outcome = await runChecks(db, { gh: deps.repoGitHub(), scanner: (deps.scanner ?? gitleaksScanner)() }, job);
+  const what = `PR #${job.prNumber} in repo ${job.repoId}`;
+  if (outcome.status === "skipped") log.info(`Checks for ${what} skipped: ${outcome.why}`);
+  else if (outcome.status === "unlinked") log.info(`Checks for ${what}: not linked (${outcome.reason})`);
+  else
+    log.info(
+      `Checks for ${what}: ${outcome.passed} passed, ${outcome.failed} failed${outcome.ciPending ? ", waiting for CI" : ""}`,
+    );
 }
 
 export function createHandlers(deps: HandlerDeps): Record<string, JobHandler> {
   return {
-    [WEBHOOK_JOB]: (db, payload, log) =>
-      handleGitHubWebhook(db, payload as GitHubWebhookJob, log, deps),
+    [WEBHOOK_JOB]: (db, payload, log) => handleGitHubWebhook(db, payload as GitHubWebhookJob, log, deps),
+    [CHECKS_JOB]: (db, payload, log) => handleChecksJob(db, payload as ChecksJob, log, deps),
   };
 }
 
-export const handlers = createHandlers({ repoGitHub: () => createRepoGitHub(getConfig()) });
+export const handlers = createHandlers({
+  repoGitHub: () => createRepoGitHub(getConfig()),
+  scanner: () => gitleaksScanner(),
+});

@@ -1,5 +1,35 @@
 import type { RepoTree } from "../brief";
+import type { ChangedFile, CiRun } from "../checks/files";
 import type { RepoPermission } from "../permissions";
+
+/** A pull request, fresh from GitHub. */
+export type PullRequest = {
+  number: number;
+  title: string;
+  body: string | null;
+  draft: boolean;
+  state: "open" | "closed";
+  merged: boolean;
+  mergedBy: string | null;
+  mergeCommitSha: string | null;
+  headSha: string;
+  headRef: string;
+  baseRef: string;
+  author: string;
+  url: string;
+};
+
+/** A check run on a commit, from any app. */
+export type CheckRun = CiRun & { id: number };
+
+/** What Pitch In posts as its one check run. */
+export type CheckRunInput = {
+  headSha: string;
+  status: "in_progress" | "completed";
+  conclusion?: "success" | "failure";
+  title: string;
+  summary: string;
+};
 
 /** A repo the Pitch In App can see on the company org. */
 export type GitHubRepo = {
@@ -29,6 +59,17 @@ export interface RepoGitHub {
   readFile(fullName: string, path: string, ref: string): Promise<{ text: string; sha: string } | null>;
   /** Every file path on a branch. */
   tree(fullName: string, ref: string): Promise<RepoTree>;
+  /** One pull request, or null if it doesn't exist. */
+  getPullRequest(fullName: string, number: number): Promise<PullRequest | null>;
+  /** The PR's changed files with their patches. */
+  listPullRequestFiles(fullName: string, number: number): Promise<ChangedFile[]>;
+  /** The latest check run of each name on a commit, from every app. */
+  listCheckRuns(fullName: string, sha: string): Promise<CheckRun[]>;
+  /** Legacy commit statuses on a commit, latest per context. */
+  listCommitStatuses(fullName: string, sha: string): Promise<{ context: string; state: string }[]>;
+  /** Posts a check run as the Pitch In App. Returns its id. */
+  createCheckRun(fullName: string, name: string, run: CheckRunInput): Promise<number>;
+  updateCheckRun(fullName: string, id: number, run: CheckRunInput): Promise<void>;
 }
 
 export const PROJECT_BRIEF_PATH = "PROJECT_BRIEF.md";

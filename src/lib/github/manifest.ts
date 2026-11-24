@@ -45,7 +45,7 @@ export function buildManifest(opts: {
       checks: "write",
     },
     // installation events are always sent; these are the extra ones.
-    default_events: ["pull_request", "check_suite", "push"],
+    default_events: ["pull_request", "check_suite", "check_run", "push", "issue_comment"],
   };
 }
 

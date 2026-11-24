@@ -3,7 +3,7 @@ import { Octokit } from "@octokit/rest";
 import type { Config, GitHubAppConfig } from "../config";
 import type { SignInGitHub, TeamState } from "../auth/signin";
 import type { RepoPermission } from "../permissions";
-import type { GitHubRepo, RepoGitHub } from "./repos";
+import type { GitHubRepo, PullRequest, RepoGitHub } from "./repos";
 
 export class AppNotInstalledError extends Error {
   constructor(org: string) {
@@ -159,8 +159,115 @@ export function createRepoGitHub(config: Config): RepoGitHub {
         truncated: Boolean(data.truncated),
       };
     },
+
+    async getPullRequest(fullName, number) {
+      const kit = await octokit();
+      try {
+        const { data } = await kit.request("GET /repos/{owner}/{repo}/pulls/{pull_number}", {
+          ...splitName(fullName),
+          pull_number: number,
+        });
+        return toPullRequest(data as RawPull);
+      } catch (err) {
+        if (isStatus(err, 404)) return null;
+        throw err;
+      }
+    },
+
+    async listPullRequestFiles(fullName, number) {
+      const kit = await octokit();
+      const files = await kit.paginate("GET /repos/{owner}/{repo}/pulls/{pull_number}/files", {
+        ...splitName(fullName),
+        pull_number: number,
+        per_page: 100,
+      });
+      return files.map((f) => ({
+        path: f.filename,
+        previousPath: f.previous_filename ?? undefined,
+        additions: f.additions,
+        deletions: f.deletions,
+        status: f.status,
+        patch: f.patch ?? undefined,
+      }));
+    },
+
+    async listCheckRuns(fullName, sha) {
+      const kit = await octokit();
+      const runs = await kit.paginate("GET /repos/{owner}/{repo}/commits/{ref}/check-runs", {
+        ...splitName(fullName),
+        ref: sha,
+        filter: "latest",
+        per_page: 100,
+      });
+      return runs.map((r) => ({ id: r.id, name: r.name, status: r.status, conclusion: r.conclusion ?? null }));
+    },
+
+    async listCommitStatuses(fullName, sha) {
+      const kit = await octokit();
+      const { data } = await kit.request("GET /repos/{owner}/{repo}/commits/{ref}/status", {
+        ...splitName(fullName),
+        ref: sha,
+        per_page: 100,
+      });
+      return data.statuses.map((s) => ({ context: s.context, state: s.state }));
+    },
+
+    async createCheckRun(fullName, name, run) {
+      const kit = await octokit();
+      const { data } = await kit.request("POST /repos/{owner}/{repo}/check-runs", {
+        ...splitName(fullName),
+        name,
+        head_sha: run.headSha,
+        status: run.status,
+        ...(run.conclusion ? { conclusion: run.conclusion } : {}),
+        output: { title: run.title, summary: run.summary },
+      });
+      return Number(data.id);
+    },
+
+    async updateCheckRun(fullName, id, run) {
+      const kit = await octokit();
+      await kit.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
+        ...splitName(fullName),
+        check_run_id: id,
+        status: run.status,
+        ...(run.conclusion ? { conclusion: run.conclusion } : {}),
+        output: { title: run.title, summary: run.summary },
+      });
+    },
   };
 }
+
+type RawPull = {
+  number: number;
+  title: string;
+  body: string | null;
+  draft?: boolean;
+  state: string;
+  merged?: boolean;
+  merged_by?: { login: string } | null;
+  merge_commit_sha?: string | null;
+  head: { sha: string; ref: string };
+  base: { ref: string };
+  user: { login: string } | null;
+  html_url: string;
+};
+
+const toPullRequest = (p: RawPull): PullRequest => ({
+  number: p.number,
+  title: p.title,
+  body: p.body,
+  draft: Boolean(p.draft),
+  state: p.state === "closed" ? "closed" : "open",
+  merged: Boolean(p.merged),
+  mergedBy: p.merged_by?.login ?? null,
+  mergeCommitSha: p.merge_commit_sha ?? null,
+  headSha: p.head.sha,
+  headRef: p.head.ref,
+  baseRef: p.base.ref,
+  author: p.user?.login ?? "ghost",
+  url: p.html_url,
+});
 
 /** The real GitHub side of sign-in, using the App's own OAuth credentials. */
 export function createSignInGitHub(config: Config): SignInGitHub {
