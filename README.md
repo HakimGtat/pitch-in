@@ -1,6 +1,6 @@
 # Pitch In
 
-An internal board where the AI team posts small wishlist tasks from company repos, and any coworker can pick one up, run it in their own Claude session, and open a pull request for the task owner to review.
+An internal board for the projects coworkers build with AI: websites, games, apps, research, automation. Owners post a single task or a project with milestones from a company repo. Any coworker takes on as much as they want, runs it in their own Claude session, and their agent opens a pull request for the owner to review.
 
 One install per company. Everything runs locally with `docker compose`: the web app, a worker, a webhook relay and Postgres. The site never stores Claude tokens, never starts agent runs, never runs contributor code, and never merges. Merging happens on GitHub.
 
@@ -15,7 +15,7 @@ Milestone 1 (foundation) is built:
 - Main admin seeded from `MAIN_ADMIN_GITHUB_LOGIN`, the "Are you on the AI team?" question, the block list and the audit log
 - GitHub App registration through GitHub's manifest flow, and webhooks received through smee
 
-Tasks, briefs and the board come in Milestone 2.
+Projects, milestones, tasks, briefs and the board come in Milestone 2.
 
 ## Running it
 
@@ -72,7 +72,7 @@ Needs Node 24.
 | Worker | `src/worker/` |
 | smee relay | `src/scripts/relay.ts` |
 
-Roles come from GitHub. Org owners are admins. Posting and reviewing (from Milestone 2) need `ai-team` membership plus write access to the repo. The site only adds a main admin and a block list, and every role change, block and admin action is written to `audit_log`.
+Roles come from GitHub. Org owners are admins. Posting and reviewing (from Milestone 2) need write access to the repo. The site only adds a main admin and a block list, and every role change, block and admin action is written to `audit_log`.
 
 Sign-in uses the Pitch In GitHub App's own OAuth credentials, so there's one registration to manage. Team membership is checked with the App's installation token, which is why the App must be installed on the org before anyone can sign in.
 

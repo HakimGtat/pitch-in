@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Milestone 1 (foundation) is built; Milestone 2 is next. **Pitch In** is an internal board where an AI team posts small wishlist tasks from company repos and any coworker picks one up, runs it in their own Claude session, and opens a PR for the task owner to review.
+Milestone 1 (foundation) is built; Milestone 2 is next. **Pitch In** is an internal board where coworkers post the projects they build with AI (websites, games, apps, research, automation) as single tasks or projects with milestones, and any coworker takes on as much as they want, runs it in their own Claude session, and opens a PR for the owner to review. Every task ends as a PR in a company GitHub repo, code or not.
 
-- `plan.md` is the source of truth: decisions, data model, checks, milestones, and the first prompt to start building.
+- `plan.md` is the source of truth: decisions, data model, checks, milestones, and the prompt for the next milestone.
 - `plan-v1.md` is the pre-review version, kept locally for reference only and ignored by git (the repo is public). It is out of date (Vercel, 72-hour locks, token-sharing pitch); never build from it or commit it.
 - A formatted copy of the plan lives at https://claude.ai/artifact/KsJQZQF2ksRtUbVzaYJACB. When `plan.md` changes in a way that affects it, mention that the doc is now stale.
 - The repo is public at https://github.com/HakimGtat/pitch-in (branch `main`). Commits use this repo's local identity `HakimGtat <71414445+HakimGtat@users.noreply.github.com>`.
@@ -39,23 +39,23 @@ Build one milestone at a time, in the order `plan.md` lists them, and stop when 
 - **The site never stores Claude tokens and never starts agent runs.** It only builds "Start in Claude" links (`https://claude.ai/code?prompt=...&repositories=owner/repo`) that a person opens and runs in their own session.
 - **The site never runs contributor code.** The worker only reads diffs through the GitHub API.
 - **Merging happens on GitHub, never from the site.** The site learns about merges from webhooks.
-- **Permissions come from GitHub.** Sign-in is limited to one configured GitHub team; posting and reviewing need `ai-team` membership plus write access to the repo. The only site-side controls are the main admin (seeded from `MAIN_ADMIN_GITHUB_LOGIN`) and a block list. The site never grants more than GitHub does.
+- **Permissions come from GitHub.** Sign-in is limited to one configured GitHub team; posting and reviewing need write access to the repo (checked fresh each time). `ai-team` membership only pre-picks the Developer profile. The only site-side controls are the main admin (seeded from `MAIN_ADMIN_GITHUB_LOGIN`) and a block list. The site never grants more than GitHub does.
 - **All config is environment variables** with a `.env.example` of fake values.
-- **Wording:** the product is "Pitch In" and the pitch is "pick up a coworker's wishlist task". Don't use token-sharing language in UI copy or docs.
+- **Wording:** the product is "Pitch In" and the pitch is "pick up part of a coworker's project". Contributors "take on" work; never say donate, share or transfer usage, and don't use token-sharing language in UI copy or docs.
 
 ## Architecture (planned)
 
 One Docker image (Next.js + TypeScript web app, a worker, and the gitleaks binary) plus Postgres, run with `docker compose`.
 
-- **Web app:** task board, task form with the brief checker, review page, admin screen, GitHub OAuth sign-in, and the GitHub App webhook receiver.
+- **Web app:** board (projects, milestones and tasks, filtered by how much the person wants to take on), task and project forms with the brief checker, review page, admin screen, GitHub OAuth sign-in, and the GitHub App webhook receiver.
 - **Worker:** polls a `jobs` table in Postgres (no extra queue service), fetches PR diffs, runs the five checks (template, size, scope, secrets via gitleaks, CI status), and posts one GitHub check run per linked PR.
 - **GitHub App:** each company registers its own through GitHub's manifest flow. Webhooks reach a machine with no public address through a smee.io relay, in development and during the trial.
 
 Behaviour that spans several parts of the code:
 
-- **Adoption lock** (48 hours) is computed on read from `expires_at`. There is no expiry job.
+- **Adoption lock** (48 hours) is computed on read from `expires_at`. There is no expiry job. Adopting a whole milestone locks its open tasks; the lock renews on each of the adopter's PRs, and they can hand back after any merged PR.
 - **PR linking:** a PR links to a task through a `Task: <id>` first line in its body, or through a link the contributor pastes. Only the current adopter's PR links; anyone else's gets a failing check.
 - **Unreviewed-merge alert:** free GitHub orgs can't protect branches on private repos, so the site flags any merge not done by the task owner or a repo admin, and any push to the default branch that didn't come through an owner-merged PR.
 - **Repos without CI can't be connected.** The CI check ignores the site's own check run.
 
-Write tests first for the core rules: the brief checker, the five PR checks, the adoption lock (with an injectable clock), the permission rules, PR linking and the unreviewed-merge alert.
+Write tests first for the core rules: the brief checker, the five PR checks, the adoption lock (with an injectable clock), milestone adoption and hand-back, the "work that fits" filter, the permission rules, PR linking and the unreviewed-merge alert.
