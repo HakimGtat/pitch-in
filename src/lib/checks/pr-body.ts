@@ -79,6 +79,27 @@ const ARROW = /^\s*(?:->|→)\s*/;
 
 export type CriterionLine = { ticked: boolean; pointer: string | null };
 
+/** Where a criterion is met: lines of a file, or "CI" for tests passing in CI. */
+export type Pointer = { kind: "ci" } | { kind: "lines"; path: string; start: number; end: number };
+
+/**
+ * Reads the pointer at the start of the text after a criterion's arrow:
+ * `path:line`, `path:start-end` or `CI`. Anything after it is ignored. A file
+ * name without a line isn't a pointer.
+ */
+export function parsePointer(text: string | null | undefined): Pointer | null {
+  const t = (text ?? "").trim().replace(/^[`'"]+/, "");
+  if (/^CI\b/i.test(t)) return { kind: "ci" };
+  const m = /^(?:\.\/)?([^\s`'",:]+):(\d+)(?:\s*[-–]\s*(\d+))?/.exec(t);
+  if (!m) return null;
+  const a = Number(m[2]);
+  const b = m[3] === undefined ? a : Number(m[3]);
+  return { kind: "lines", path: m[1].replace(/^\/+/, ""), start: Math.min(a, b), end: Math.max(a, b) };
+}
+
+export const formatPointer = (p: Pointer) =>
+  p.kind === "ci" ? "CI" : `${p.path}:${p.start}${p.end !== p.start ? `-${p.end}` : ""}`;
+
 /**
  * The line in Acceptance criteria that lists `criterion` word for word (spaces
  * aside), and the pointer after its arrow, or null when it isn't listed.
