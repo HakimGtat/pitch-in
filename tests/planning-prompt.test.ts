@@ -36,7 +36,7 @@ describe("the planning prompt", () => {
     const p = buildPlanningPrompt(input({ repo: { ...input().repo, largestTier: "medium" } }));
     expect(p).toContain("One task is one PR and one session");
     expect(p).toContain("This repo allows medium at most");
-    expect(p).toContain("files: real paths that exist now, five at most");
+    expect(p).toContain("five at most");
     expect(p).toContain("under 500 words");
     expect(p).toContain("dependency order");
     expect(p).toContain("Each milestone ends at something usable");
@@ -50,9 +50,16 @@ describe("the planning prompt", () => {
     expect(buildPlanningPrompt(input({ repo: { ...input().repo, offLimitsPaths: [] } }))).not.toContain("off-limits");
   });
 
-  it("asks for one JSON block in the import format, and the skeleton parses", () => {
+  it("asks for files that exist now, not ones an earlier task creates", () => {
+    // The live Milestone 4 run listed src/lib/checks/types.ts, which an earlier task creates.
+    expect(buildPlanningPrompt(input())).toContain("files: real paths that exist now, not ones an earlier task creates");
+  });
+
+  it("asks for one JSON block with every field filled in, and the skeleton parses", () => {
     const p = buildPlanningPrompt(input());
     expect(p).toContain("Answer with only one ```json block");
+    // The live Milestone 4 run left testCommand out of 7 of its 14 tasks.
+    expect(p).toContain("every field filled in, testCommand included");
     expect(p).toContain(IMPORT_SKELETON);
     expect(parseImport(IMPORT_SKELETON).ok).toBe(true);
   });

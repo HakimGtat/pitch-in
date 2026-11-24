@@ -50,7 +50,7 @@ export function buildPlanningPrompt({ repo, planFile, section }: PlanningInput):
   const rules = [
     "- One task is one PR and one session, written so someone new to the repo can finish it in one pass.",
     `- estimate: small (up to 300 lines changed), medium (1,000) or large (2,000), tests included. This repo allows ${repo.largestTier} at most.`,
-    "- files: real paths that exist now, five at most. For new work, the closest file or the folder it goes in.",
+    "- files: real paths that exist now, not ones an earlier task creates; five at most. For new work, the closest file or folder.",
     `- allowedPaths: globs the PR may touch, like "src/upload/**"${repo.offLimitsPaths.length ? `; never these off-limits paths: ${repo.offLimitsPaths.join(", ")}` : ""}.`,
     "- acceptance: yes/no checks a reviewer can tick in seconds. Every review checks against them.",
     '- testCommand: one plain command (no ; && | $( ), from the repo\'s own commands. Docs or research: the lint or link check, or "none".',
@@ -65,7 +65,7 @@ export function buildPlanningPrompt({ repo, planFile, section }: PlanningInput):
     what,
     `Keep it cheap: reformat the plan, don't redesign it. ${reading} Open another file only to confirm a path or a name (git ls-files lists them). Never read the whole codebase; contributors do that. Where the plan is unclear, take the simplest reading and say so in that task's constraints.`,
     `Splitting rules:\n${rules.join("\n")}`,
-    `Answer with only one \`\`\`json block in this format, filled in:\n\`\`\`json\n${IMPORT_SKELETON}\n\`\`\``,
+    `Answer with only one \`\`\`json block in this format, every field filled in, testCommand included:\n\`\`\`json\n${IMPORT_SKELETON}\n\`\`\``,
   ].join("\n\n") + "\n";
 }
 

@@ -232,20 +232,7 @@ function Preview({
               ))}
             </ul>
           ) : null}
-          {flags.warnings.length ? (
-            <div className={flags.errors.length ? "mt-3 text-amber-900" : ""}>
-              {flags.errors.length ? (
-                <p className="font-semibold">
-                  {plural(flags.warnings.length, "warning")}, which {flags.warnings.length === 1 ? "doesn't" : "don't"} block posting
-                </p>
-              ) : null}
-              <ul className="mt-2 list-disc space-y-1 pl-5">
-                {flags.warnings.map((w, i) => (
-                  <li key={`w${i}`}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          {flags.warnings.length ? <WarningList warnings={flags.warnings} withErrors={flags.errors.length > 0} /> : null}
           <p className="mt-3 text-stone-700">
             {flags.errors.length
               ? "Fix them in the JSON above and check again, or copy them for your agent and paste its new answer."
@@ -315,6 +302,36 @@ function Preview({
   );
 }
 
+/** A few warnings show in full; more fold away so the problems stay easy to see. */
+const WARNINGS_SHOWN = 5;
+
+function WarningList({ warnings, withErrors }: { warnings: string[]; withErrors: boolean }) {
+  const label = `${plural(warnings.length, "warning")}, which ${warnings.length === 1 ? "doesn't" : "don't"} block posting`;
+  const list = (
+    <ul className="mt-2 list-disc space-y-1 pl-5">
+      {warnings.map((w, i) => (
+        <li key={`w${i}`}>{w}</li>
+      ))}
+    </ul>
+  );
+  if (warnings.length > WARNINGS_SHOWN) {
+    return (
+      <details className={withErrors ? "mt-3 text-amber-900" : "mt-1"}>
+        <summary className="cursor-pointer font-semibold">
+          Show the {label}
+        </summary>
+        {list}
+      </details>
+    );
+  }
+  return (
+    <div className={withErrors ? "mt-3 text-amber-900" : ""}>
+      {withErrors ? <p className="font-semibold">{label}</p> : null}
+      {list}
+    </div>
+  );
+}
+
 function FlagList({ errors, warnings = [] }: { errors: { message: string }[] | string[]; warnings?: { message: string }[] }) {
   const text = (f: { message: string } | string) => (typeof f === "string" ? f : f.message);
   if (!errors.length && !warnings.length) return null;
@@ -336,7 +353,8 @@ function FlagList({ errors, warnings = [] }: { errors: { message: string }[] | s
 
 function TaskItem({ task, position }: { task: TaskPreview; position: number }) {
   const { draft } = task;
-  const flagged = task.errors.length > 0 || task.warnings.length > 0;
+  // Only problems open a task; warnings show as a badge, so a long plan stays readable.
+  const flagged = task.errors.length > 0;
   return (
     <li className={`rounded-lg border ${task.errors.length ? "border-red-200" : task.warnings.length ? "border-amber-200" : "border-stone-200"}`}>
       <details open={flagged || undefined}>

@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Milestones 1 (foundation) and 2 (projects, tasks and briefs) are built; Milestone 3 (plan import) is next, then Milestone 4 (checks and review). **Pitch In** is an internal board where coworkers post the projects they build with AI (websites, games, apps, research, automation) as single tasks or projects with milestones, and any coworker takes on as much as they want, runs it in their own Claude session, and opens a PR for the owner to review. Every task ends as a PR in a company GitHub repo, code or not.
+Milestones 1 (foundation), 2 (projects, tasks and briefs) and 3 (plan import) are built; Milestone 4 (checks and review) is next, posted on the local board from `plan.md` as tasks PI-9 to PI-22 on `PromptIn-test/pitch-in`. **Pitch In** is an internal board where coworkers post the projects they build with AI (websites, games, apps, research, automation) as single tasks or projects with milestones, and any coworker takes on as much as they want, runs it in their own Claude session, and opens a PR for the owner to review. Every task ends as a PR in a company GitHub repo, code or not.
 
 - `plan.md` is the source of truth: decisions, data model, checks, milestones, and the prompt for the next milestone.
 - `plan-v1.md` is the pre-review version, kept locally for reference only and ignored by git (the repo is public). It is out of date (Vercel, 72-hour locks, token-sharing pitch); never build from it or commit it.
 - A formatted copy of the plan lives at https://claude.ai/artifact/KsJQZQF2ksRtUbVzaYJACB. When `plan.md` changes in a way that affects it, mention that the doc is now stale.
 - The repo is public at https://github.com/HakimGtat/pitch-in (branch `main`). Commits use this repo's local identity `HakimGtat <71414445+HakimGtat@users.noreply.github.com>`.
+- `PromptIn-test/pitch-in` is a public test copy of this repo that the Pitch In App can see, connected on the local install so Pitch In's own work can be posted on it. It only gets new commits when they're pushed there on purpose.
 - `AGENTS.md` is written by `next dev` (Next.js 16.4 agent rules). Next 16 differs from older versions: check `node_modules/next/dist/docs/` before using an API you are unsure of.
 
 Build one milestone at a time, in the order `plan.md` lists them, and stop when that milestone's "Done when" is met.

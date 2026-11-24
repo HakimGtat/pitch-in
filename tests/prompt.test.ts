@@ -155,6 +155,10 @@ describe("long links", () => {
   it("aren't hit by a typical task", () => {
     expect(isLongLink(startInClaudeUrl(buildPrompt(input()), "acme/uploader"))).toBe(false);
   });
+
+  it("start at the longest link checked by hand: 8,858 characters filled in on 2026-11-24", () => {
+    expect(LONGEST_TESTED_LINK).toBe(8_858);
+  });
 });
 
 describe("startInClaudeUrl", () => {

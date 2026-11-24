@@ -122,11 +122,13 @@ export function buildPrompt({ task, repo, project, milestone }: PromptInput): st
 }
 
 /**
- * The longest Start in Claude link we've seen fill in the prompt. Past it the
- * task page points to Copy brief as well. The prototype proved about 3,600
- * characters; raised only after a longer link was checked by hand.
+ * The longest Start in Claude link we've seen fill in the whole prompt. Past it
+ * the task page points to Copy brief as well. The prototype proved about 3,600
+ * characters; on 2026-11-24 a 6,636-character link (a real Milestone 4 task)
+ * and an 8,858-character one (a 529-word sample brief, over the word limit)
+ * both filled in completely. Raise it only after checking a longer link by hand.
  */
-export const LONGEST_TESTED_LINK = 3_600;
+export const LONGEST_TESTED_LINK = 8_858;
 
 export const isLongLink = (url: string) => url.length > LONGEST_TESTED_LINK;
 
