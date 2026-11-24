@@ -325,3 +325,26 @@ describe("the site's own check suite", () => {
     expect(ours()).toHaveLength(before);
   });
 });
+
+describe("GitHub as the owner's inbox", () => {
+  it("asks for the task owner's review once, when the PR passes, and links the check run to the task page", async () => {
+    fake.addPull("acme/uploader", { number: 50, author: "alice", body: goodBody(taskId), headSha: "r1" }, goodFiles);
+    fake.setCi("acme/uploader", "r1", [{ name: "test", conclusion: "success" }]);
+    await sendPr(50);
+    await runChecks(db, { gh: fake.gh, scanner: noSecrets, appUrl: "http://pitch-in.local" }, { repoId, prNumber: 50 });
+    expect(fake.world.reviewRequests).toEqual([{ fullName: "acme/uploader", number: 50, login: "olive" }]);
+    expect(ours().at(-1)?.run.detailsUrl).toBe(`http://pitch-in.local/tasks/${taskId}`);
+
+    fake.world.pulls.get("acme/uploader#50")!.headSha = "r2";
+    fake.setCi("acme/uploader", "r2", [{ name: "test", conclusion: "success" }]);
+    await sendPr(50, "synchronize");
+    expect(fake.world.reviewRequests).toHaveLength(1);
+  });
+
+  it("doesn't ask while checks are failing", async () => {
+    fake.addPull("acme/uploader", { number: 51, author: "alice", body: goodBody(taskId), headSha: "r3" }, goodFiles);
+    fake.setCi("acme/uploader", "r3", [{ name: "test", conclusion: "failure" }]);
+    await sendPr(51);
+    expect(fake.world.reviewRequests).toEqual([]);
+  });
+});

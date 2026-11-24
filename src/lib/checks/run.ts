@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { jobs, repos, submissions, tasks, type Repo, type Submission, type Task } from "../db/schema";
+import { jobs, repos, submissions, tasks, users, type Repo, type Submission, type Task } from "../db/schema";
 import type { CheckRunInput, PullRequest, RepoGitHub } from "../github/repos";
 import { checkMerge } from "../alerts";
 import { handlePrClosed } from "../merge";
@@ -49,6 +49,8 @@ export type StoredChecks = {
   pr: { title: string; url: string; draft: boolean; body: string; headRef: string; author: string };
   /** The changed lines around each criterion's pointer, for the review packet. */
   excerpts: Excerpt[];
+  /** The task owner's review was requested on GitHub once the PR passed (done once per PR). */
+  reviewRequested?: boolean;
 };
 
 export const checksJobKey = (job: ChecksJob, headSha: string) => `checks:${job.repoId}#${job.prNumber}@${headSha}`;
@@ -152,7 +154,7 @@ const OPEN_SUBMISSION = new Set<Submission["status"]>(["checking", "checks_faile
  */
 export async function runChecks(
   db: Db,
-  deps: { gh: RepoGitHub; scanner: SecretScanner },
+  deps: { gh: RepoGitHub; scanner: SecretScanner; appUrl?: string },
   job: ChecksJob,
   now: Date = new Date(),
 ): Promise<ChecksOutcome> {
@@ -201,6 +203,7 @@ export async function runChecks(
       conclusion: "failure",
       title: "Not linked to a task",
       summary: `Pitch In checks: not linked\n\n${link.reason} Only the PR of the person who took on the task is checked and reviewed.`,
+      ...(deps.appUrl ? { detailsUrl: `${deps.appUrl}/tasks/${parseTaskLine(pr.body)}` } : {}),
     });
     return { status: "unlinked", reason: link.reason };
   }
@@ -251,6 +254,8 @@ export async function runChecks(
     ciPendingSince: ciPending ? ciPendingSince : null,
     pr: { title: pr.title, url: pr.url, draft: pr.draft, body: pr.body ?? "", headRef: pr.headRef, author: pr.author },
     excerpts: buildExcerpts(pr.body, task.brief.acceptance, files),
+    // Once per PR: GitHub keeps a review request across later pushes.
+    reviewRequested: previous?.reviewRequested ?? false,
   };
   const status: Submission["status"] = ciPending ? "checking" : failed === 0 ? "in_review" : "checks_failed";
 
@@ -266,7 +271,27 @@ export async function runChecks(
     }
   });
 
-  await postCheckRun(deps.gh, repo.fullName, { ...checkRunOutput(results, ciPending), headSha: pr.headSha });
+  await postCheckRun(deps.gh, repo.fullName, {
+    ...checkRunOutput(results, ciPending),
+    headSha: pr.headSha,
+    ...(deps.appUrl ? { detailsUrl: `${deps.appUrl}/tasks/${task.id}` } : {}),
+  });
+
+  // GitHub is the owner's inbox: once the PR passes, ask for their review there, so GitHub's own notifications tell them.
+  if (status === "in_review" && !stored.reviewRequested) {
+    const [owner] = await db.select({ handle: users.handle }).from(users).where(eq(users.id, task.ownerId));
+    if (owner && owner.handle.toLowerCase() !== pr.author.toLowerCase()) {
+      try {
+        await deps.gh.requestReview(repo.fullName, pr.number, owner.handle);
+      } catch {
+        // Not worth failing the checks over: the owner's pages list the PR anyway.
+      }
+    }
+    await db
+      .update(submissions)
+      .set({ checkResults: { ...stored, reviewRequested: true } })
+      .where(eq(submissions.id, submission.id));
+  }
 
   if (ciPending) {
     // Check again once CI has had time to finish, whether or not GitHub tells us it did.

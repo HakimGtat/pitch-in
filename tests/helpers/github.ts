@@ -17,6 +17,7 @@ export function fakeGitHub() {
     posted: [] as PostedCheckRun[],
     comments: [] as { fullName: string; number: number; body: string; id?: number; author?: string }[],
     closed: [] as { fullName: string; number: number }[],
+    reviewRequests: [] as { fullName: string; number: number; login: string }[],
   };
   let nextCheckRunId = 1000;
   const prKey = (fullName: string, n: number) => `${fullName}#${n}`;
@@ -73,6 +74,9 @@ export function fakeGitHub() {
       const pr = world.pulls.get(prKey(fullName, n));
       if (pr) pr.state = "closed";
       world.closed.push({ fullName, number: n });
+    },
+    requestReview: async (fullName, n, login) => {
+      world.reviewRequests.push({ fullName, number: n, login });
     },
     listIssueComments: async (fullName, n) =>
       world.comments.filter((c) => c.fullName === fullName && c.number === n).map((c, i) => ({ id: c.id ?? 50_000 + i, body: c.body, author: c.author ?? "pitch-in" })),

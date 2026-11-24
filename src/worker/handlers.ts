@@ -19,7 +19,13 @@ import { queueSweep, runSweep, SWEEP_JOB } from "@/lib/sweep";
 
 /** What the handlers need from outside. Tests pass a fake GitHub and a fake scanner. */
 /** What the handlers need from outside. Tests pass a fake GitHub and a fake scanner. `appId` is the Pitch In App's own id. */
-export type HandlerDeps = { repoGitHub: () => RepoGitHub; scanner?: () => SecretScanner; appId?: () => number | null };
+export type HandlerDeps = {
+  repoGitHub: () => RepoGitHub;
+  scanner?: () => SecretScanner;
+  appId?: () => number | null;
+  /** The site's address, for the check run's Details link. */
+  appUrl?: () => string;
+};
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v && typeof v === "object" ? (v as Obj) : {});
@@ -198,7 +204,11 @@ export async function handleGitHubWebhook(
 }
 
 export async function handleChecksJob(db: Db, job: ChecksJob, log: Logger, deps: HandlerDeps): Promise<void> {
-  const outcome = await runChecks(db, { gh: deps.repoGitHub(), scanner: (deps.scanner ?? gitleaksScanner)() }, job);
+  const outcome = await runChecks(
+    db,
+    { gh: deps.repoGitHub(), scanner: (deps.scanner ?? gitleaksScanner)(), appUrl: deps.appUrl?.() },
+    job,
+  );
   const what = `PR #${job.prNumber} in repo ${job.repoId}`;
   if (outcome.status === "skipped") log.info(`Checks for ${what} skipped: ${outcome.why}`);
   else if (outcome.status === "unlinked") log.info(`Checks for ${what}: not linked (${outcome.reason})`);
@@ -234,6 +244,7 @@ export function createHandlers(deps: HandlerDeps): Record<string, JobHandler> {
 
 export const handlers = createHandlers({
   repoGitHub: () => createRepoGitHub(getConfig()),
+  appUrl: () => getConfig().appUrl,
   appId: () => {
     const id = Number(getConfig().githubApp?.appId);
     return Number.isFinite(id) && id > 0 ? id : null;

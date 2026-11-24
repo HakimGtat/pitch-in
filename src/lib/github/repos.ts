@@ -29,6 +29,8 @@ export type CheckRunInput = {
   conclusion?: "success" | "failure";
   title: string;
   summary: string;
+  /** The "Details" link on GitHub: the task page. */
+  detailsUrl?: string;
 };
 
 /** A repo the Pitch In App can see on the company org. */
@@ -74,6 +76,8 @@ export interface RepoGitHub {
   updateCheckRun(fullName: string, id: number, run: CheckRunInput): Promise<void>;
   /** Comments on a PR as the Pitch In App, then closes it without merging. */
   closePullRequest(fullName: string, number: number, comment: string): Promise<void>;
+  /** Asks someone to review a PR (it shows in their GitHub notifications). */
+  requestReview(fullName: string, number: number, login: string): Promise<void>;
   /** The comments on a PR's conversation, oldest first. */
   listIssueComments(fullName: string, number: number): Promise<{ id: number; body: string; author: string }[]>;
   /** Numbers of the PRs GitHub associates with a commit (a merge commit's own PR among them). */

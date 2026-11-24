@@ -227,6 +227,7 @@ export function createRepoGitHub(config: Config): RepoGitHub {
         status: run.status,
         ...(run.conclusion ? { conclusion: run.conclusion } : {}),
         output: { title: run.title, summary: run.summary },
+        ...(run.detailsUrl ? { details_url: run.detailsUrl } : {}),
       });
       return Number(data.id);
     },
@@ -239,6 +240,7 @@ export function createRepoGitHub(config: Config): RepoGitHub {
         status: run.status,
         ...(run.conclusion ? { conclusion: run.conclusion } : {}),
         output: { title: run.title, summary: run.summary },
+        ...(run.detailsUrl ? { details_url: run.detailsUrl } : {}),
       });
     },
 
@@ -253,6 +255,15 @@ export function createRepoGitHub(config: Config): RepoGitHub {
         ...splitName(fullName),
         pull_number: number,
         state: "closed",
+      });
+    },
+
+    async requestReview(fullName, number, login) {
+      const kit = await octokit();
+      await kit.request("POST /repos/{owner}/{repo}/pulls/{pull_number}/requested_reviewers", {
+        ...splitName(fullName),
+        pull_number: number,
+        reviewers: [login],
       });
     },
 
