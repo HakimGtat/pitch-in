@@ -167,6 +167,14 @@ describe("linking PRs", () => {
     expect(entry).toMatchObject({ target: "acme/uploader#5", details: { author: "bob", taskId } });
   });
 
+  it("notes an unlinked PR once, not on every push", async () => {
+    await linkPullRequest(db, pr({ body: "no line" }), t0);
+    await linkPullRequest(db, pr({ body: "no line", headSha: "next" }), t0);
+    expect(await unlinkedLog()).toHaveLength(1);
+    await linkPullRequest(db, pr({ body: "Task: PI-999" }), t0);
+    expect(await unlinkedLog()).toHaveLength(2);
+  });
+
   it("doesn't link the owner's own PR either", async () => {
     const out = await linkPullRequest(db, pr({ authorHandle: "olive" }), t0);
     expect(out.status).toBe("unlinked");

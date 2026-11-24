@@ -78,7 +78,11 @@ export async function handleGitHubWebhook(
       log.info(`GitHub webhook ${label} on ${str(repository.full_name) ?? "a repo"} that isn't connected; ignored`);
       return;
     }
-    const outcome = await handlePullRequestEvent(db, job.action, body, repo);
+    const outcome = await handlePullRequestEvent(db, job.action, body, {
+      id: repo.id,
+      fullName: repo.fullName,
+      defaultBranch: str(repository.default_branch) ?? repo.defaultBranch,
+    });
     if (!outcome) log.info(`GitHub webhook ${label} needs no linking`);
     else if (outcome.status === "ignored") log.info(`GitHub webhook ${label}: PR isn't into the default branch; ignored`);
     else if (outcome.status === "linked") log.info(`GitHub webhook ${label}: PR linked to task ${outcome.taskId}`);

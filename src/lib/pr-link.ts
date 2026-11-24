@@ -1,8 +1,8 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { getUser, PermissionError } from "./admin";
 import { writeAudit } from "./audit";
 import type { Db } from "./db/client";
-import { submissions, tasks } from "./db/schema";
+import { auditLog, submissions, tasks } from "./db/schema";
 import { parseTaskRef, taskRef } from "./prompt";
 import { loadTaskView, type FullTaskView } from "./views";
 
@@ -124,6 +124,14 @@ export async function linkPullRequest(db: Db, pr: PullRequestInfo, now: Date = n
 
   if (!decision.linked || !task?.holder) {
     const reason = decision.linked ? "Nobody has taken on this task right now." : decision.reason;
+    // Pushes and edits repeat the event; only note a changed reason.
+    const [last] = await db
+      .select({ details: auditLog.details })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "pr.unlinked"), eq(auditLog.target, prTarget(pr.repoFullName, pr.number))))
+      .orderBy(desc(auditLog.id))
+      .limit(1);
+    if ((last?.details as { reason?: string } | null)?.reason === reason) return { status: "unlinked", reason };
     await writeAudit(db, {
       actorId: null,
       action: "pr.unlinked",
