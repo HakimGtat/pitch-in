@@ -11,7 +11,8 @@ import type { RepoGitHub } from "@/lib/github/repos";
 import type { JobHandler, Logger } from "@/lib/jobs";
 import { WEBHOOK_JOB, type GitHubWebhookJob } from "@/lib/github/webhook";
 import { handlePullRequestEvent } from "@/lib/pr-link";
-import { answerQuestionsOnPr, recordQuestion } from "@/lib/questions";
+import { handlePrClosed, renewLock } from "@/lib/merge";
+import { recordQuestion } from "@/lib/questions";
 import { refreshRepo, reposForPush } from "@/lib/repos";
 
 /** What the handlers need from outside. Tests pass a fake GitHub and a fake scanner. */
@@ -97,10 +98,22 @@ export async function handleGitHubWebhook(
     else if (outcome.status === "linked") log.info(`GitHub webhook ${label}: PR linked to task ${outcome.taskId}`);
     else log.info(`GitHub webhook ${label}: PR not linked: ${outcome.reason}`);
 
+    // Closed: merged moves the task and milestone on; closed without a merge leaves the task with its adopter.
     if (job.action === "closed") {
-      const answered = await answerQuestionsOnPr(db, repo.id, Number(pr.number), new Date());
-      if (answered) log.info(`GitHub webhook ${label}: ${answered} question(s) on PR #${pr.number} answered by its closing`);
+      const closed = await handlePrClosed(db, {
+        repoId: repo.id,
+        prNumber: Number(pr.number),
+        merged: pr.merged === true,
+        mergedBy: str(obj(pr.merged_by).login) ?? null,
+        mergeCommitSha: str(pr.merge_commit_sha) ?? null,
+      });
+      log.info(`GitHub webhook ${label}: PR #${pr.number} ${closed.status === "merged" ? `merged, task ${closed.taskId} done` : closed.status.replace("_", " ")}`);
       return;
+    }
+
+    // A linked PR opening renews the adopter's lock (the whole milestone's, for a milestone adoption).
+    if (outcome?.status === "linked" && ["opened", "reopened", "ready_for_review"].includes(job.action ?? "")) {
+      await renewLock(db, outcome.taskId, new Date());
     }
 
     const headSha = str(obj(pr.head).sha);

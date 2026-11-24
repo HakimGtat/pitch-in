@@ -143,12 +143,3 @@ export function answerInClaude(input: Parameters<typeof buildAnswerPrompt>[0]): 
   return { prompt, url, long: isLongLink(url) };
 }
 
-/** A linked PR closed, merged or not: its questions are settled. */
-export async function answerQuestionsOnPr(db: Db, repoId: number, prNumber: number, now: Date): Promise<number> {
-  const rows = await db
-    .select({ id: submissions.id })
-    .from(submissions)
-    .innerJoin(tasks, eq(submissions.taskId, tasks.id))
-    .where(and(eq(tasks.repoId, repoId), eq(submissions.prNumber, prNumber)));
-  return answerQuestionsFor(db, rows.map((r) => r.id), now);
-}

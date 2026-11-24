@@ -421,7 +421,8 @@ export async function closeProject(db: Db, actorId: number, projectId: number, n
   });
 }
 
-async function finishProject(db: Db, projectId: number, status: "done" | "closed", now: Date): Promise<void> {
+/** Ends a project: any task still open is closed and its adoption released. */
+export async function finishProject(db: Db, projectId: number, status: "done" | "closed", now: Date): Promise<void> {
   const open = await db
     .select({ id: tasks.id })
     .from(tasks)

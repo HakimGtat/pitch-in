@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { switchOwnProfile } from "@/app/actions";
 import { chooseTakeOn } from "@/app/work-actions";
 import { DEVELOPER_TEXT, GUIDED_TEXT, ProfileChoice } from "@/components/profile-choice";
@@ -7,6 +8,8 @@ import { requireUser } from "@/lib/auth/current-user";
 import { getConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
 import { TAKE_ON, TAKE_ON_LABEL, TAKE_ON_SHOWS } from "@/lib/sizing";
+import { helpedShip } from "@/lib/merge";
+import { taskRef } from "@/lib/prompt";
 import { loadWaitingOnOwner } from "@/lib/questions";
 import { loadOwnerQueue } from "@/lib/views";
 
@@ -14,7 +17,11 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
   const user = await requireUser();
   const { saved } = await searchParams;
   const { aiTeam, org } = getConfig();
-  const [queue, waiting] = await Promise.all([loadOwnerQueue(getDb(), user.id), loadWaitingOnOwner(getDb(), user.id)]);
+  const [queue, waiting, shipped] = await Promise.all([
+    loadOwnerQueue(getDb(), user.id),
+    loadWaitingOnOwner(getDb(), user.id),
+    helpedShip(getDb(), user.id),
+  ]);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -38,6 +45,25 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
       </Card>
 
       <OwnerQueue items={queue} waiting={waiting} />
+
+      <Card className="mb-6">
+        <h2 className="font-semibold">Helped ship{shipped.count ? ` (${shipped.count})` : ""}</h2>
+        {shipped.count ? (
+          <ul className="mt-2 divide-y divide-stone-100 text-sm">
+            {shipped.tasks.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <Link href={`/tasks/${t.id}`} className="font-medium hover:underline">
+                  <span className="mr-2 font-mono text-xs text-stone-500">{taskRef(t.id)}</span>
+                  {t.title}
+                </Link>
+                <span className="text-stone-500">{t.repoFullName}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-sm text-stone-600">Work you take on shows up here once its owner merges it.</p>
+        )}
+      </Card>
 
       <Card className="mb-6">
         <h2 className="font-semibold">How much do you want to take on?</h2>
