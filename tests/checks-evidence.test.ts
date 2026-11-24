@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addedLines, changedLineMap, patchLines } from "@/lib/checks/diff";
+import { addedLines, changedLineMap, deletionEdges, patchLines } from "@/lib/checks/diff";
 import { checkEvidence } from "@/lib/checks/evidence";
 import { parsePointer } from "@/lib/checks/pr-body";
 
@@ -130,5 +130,43 @@ describe("pointers that start like CI", () => {
     expect(parsePointer("CI.md:3")).toEqual({ kind: "lines", path: "CI.md", start: 3, end: 3 });
     expect(parsePointer("CI (green)")).toEqual({ kind: "ci" });
     expect(parsePointer("CI")).toEqual({ kind: "ci" });
+  });
+});
+
+describe("pointers to deleted code", () => {
+  // Lines 3-4 are deleted outright; new-side line 2 and 3 sit either side.
+  const DELETE = ["@@ -1,6 +1,4 @@", " a", " b", "-old1", "-old2", " c", " d"].join("\n");
+
+  it("count when they sit next to a pure deletion, not next to a change", () => {
+    expect(deletionEdges(DELETE)).toEqual([2, 3]);
+    expect(deletionEdges(PATCH)).toEqual([]);
+  });
+
+  it("pass the Evidence check, and so does any line of a removed file", () => {
+    const map = changedLineMap([
+      { path: "src/a.js", additions: 0, deletions: 2, patch: DELETE },
+      { path: "scripts/old.ts", additions: 0, deletions: 40, status: "removed", patch: "@@ -1,40 +0,0 @@\n-x" },
+    ]);
+    const r = checkEvidence(
+      body(["- [x] The old helper is gone -> src/a.js:2-3", "- [x] The script is removed -> scripts/old.ts:1"]),
+      ["The old helper is gone", "The script is removed"],
+      map,
+    );
+    expect(r.passed).toBe(true);
+  });
+});
+
+describe("criteria typeset differently", () => {
+  it("still match word for word", () => {
+    const b = body([
+      "- [x] `slugify(null)` throws a TypeError. -> src/slugify.js:7",
+      "- [x] a new test covers non-string input -> tests/slugify.test.js:1",
+      "- [x] All existing tests pass -> CI",
+    ]);
+    expect(checkEvidence(b, CRITERIA, changed).passed).toBe(true);
+  });
+
+  it("still fail when the words differ", () => {
+    expect(checkEvidence(body(["- [x] slugify(null) throws an error -> src/slugify.js:7"]), [CRITERIA[0]], changed).passed).toBe(false);
   });
 });

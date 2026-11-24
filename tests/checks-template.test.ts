@@ -169,3 +169,14 @@ describe("the Criteria check", () => {
     expect(r.detail).toMatch(/^1 of 3 listed and ticked/);
   });
 });
+
+describe("the Criteria check with typesetting differences", () => {
+  it("passes curly quotes, backticks, a trailing full stop and capitals", () => {
+    const r = checkCriteria(
+      body({ criteria: "- [x] `slugify(null)` throws a TypeError.\n- [x] A NEW TEST covers non-string input\n- [x] All existing tests pass" }),
+      CRITERIA,
+    );
+    expect(r.passed).toBe(true);
+    expect(checkCriteria(body({ criteria: "- [x] “Quoted” words" }), ['"Quoted" words']).passed).toBe(true);
+  });
+});

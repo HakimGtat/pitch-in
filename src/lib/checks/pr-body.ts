@@ -79,6 +79,22 @@ export function hasContent(text: string | undefined): boolean {
 const squash = (s: string) => s.replace(/\s+/g, " ").trim();
 const CHECKBOX = /^\s*[-*]\s*\[( |x|X)\]\s*(.*)$/;
 const ARROW = /^\s*(?:->|→)\s*/;
+const ARROWS = /\s*(?:->|→)/g;
+
+/**
+ * "Word for word" without tripping on how an agent typeset it: backticks,
+ * curly or straight quotes, a trailing full stop, capitals and spacing don't
+ * matter. The words themselves do.
+ */
+export const sameWords = (s: string) =>
+  squash(
+    s
+      .replace(/`/g, "")
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'"),
+  )
+    .replace(/[.;:,!]+$/, "")
+    .toLowerCase();
 
 export type CriterionLine = { ticked: boolean; pointer: string | null };
 
@@ -109,14 +125,18 @@ export const formatPointer = (p: Pointer) =>
  * aside), and the pointer after its arrow, or null when it isn't listed.
  */
 export function findCriterion(parsed: ParsedBody, criterion: string): CriterionLine | null {
-  const want = squash(criterion);
+  const want = sameWords(criterion);
   for (const line of (parsed.sections["Acceptance criteria"] ?? "").split("\n")) {
     const m = CHECKBOX.exec(line);
     if (!m) continue;
     const rest = squash(m[2]);
-    if (rest !== want && !(rest.startsWith(want) && ARROW.test(rest.slice(want.length)))) continue;
-    const after = rest.slice(want.length).replace(ARROW, "").trim();
-    return { ticked: m[1] !== " ", pointer: after || null };
+    // The criterion is everything before one of the arrows (a criterion may itself contain "->"), or the whole line.
+    const cuts = [rest.length, ...[...rest.matchAll(ARROWS)].map((a) => a.index!)];
+    for (const cut of cuts) {
+      if (sameWords(rest.slice(0, cut)) !== want) continue;
+      const after = rest.slice(cut).replace(ARROW, "").trim();
+      return { ticked: m[1] !== " ", pointer: after || null };
+    }
   }
   return null;
 }

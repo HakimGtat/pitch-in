@@ -40,16 +40,59 @@ export function addedLines(patch: string): number[] {
 }
 
 /**
- * Changed lines per file. `"any"` marks a changed file GitHub shows no patch
- * for (binary or too large), where any line counts.
+ * Where the patch only deletes lines (nothing added in their place), as the
+ * new-side lines on either side: a criterion met by removing code can point
+ * there. A deletion followed by added lines is a change, and the added lines
+ * are what to point at.
+ */
+export function deletionEdges(patch: string): number[] {
+  const out = new Set<number>();
+  let next = 0;
+  let inHunk = false;
+  let pending: number | null = null;
+  const settle = () => {
+    if (pending === null) return;
+    if (pending > 1) out.add(pending - 1);
+    out.add(pending);
+    pending = null;
+  };
+  for (const raw of patch.replace(/\r\n?/g, "\n").split("\n")) {
+    const h = HUNK.exec(raw);
+    if (h) {
+      settle();
+      next = Number(h[1]);
+      inHunk = true;
+      continue;
+    }
+    if (!inHunk) continue;
+    if (raw.startsWith("-")) pending ??= next;
+    else if (raw.startsWith("+")) {
+      pending = null;
+      next++;
+    } else if (raw.startsWith(" ")) {
+      settle();
+      next++;
+    }
+  }
+  settle();
+  return [...out].sort((a, b) => a - b);
+}
+
+/**
+ * Changed lines per file: lines added, and the lines either side of a
+ * deletion. `"any"` marks a changed file GitHub shows no patch for (binary or
+ * too large) and a file the PR removes, where any line counts.
  */
 export type ChangedLineMap = Map<string, Set<number> | "any">;
 
 export function changedLineMap(files: ChangedFile[]): ChangedLineMap {
   const map: ChangedLineMap = new Map();
   for (const f of files) {
-    if (f.status === "removed") continue;
-    map.set(f.path, f.patch === undefined ? "any" : new Set(addedLines(f.patch)));
+    if (f.status === "removed" || f.patch === undefined) {
+      map.set(f.path, "any");
+      continue;
+    }
+    map.set(f.path, new Set([...addedLines(f.patch), ...deletionEdges(f.patch)]));
   }
   return map;
 }
