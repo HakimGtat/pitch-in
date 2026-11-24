@@ -10,7 +10,10 @@ export const SECTIONS = [
   "Not done or assumed",
   "Agent",
 ] as const;
-export type SectionName = (typeof SECTIONS)[number];
+/** Optional: a draft PR whose agent stopped to ask the owner something (plan.md, "Questions for the owner"). */
+export const QUESTION_SECTION = "Question for owner";
+export type SectionName = (typeof SECTIONS)[number] | typeof QUESTION_SECTION;
+const KNOWN: SectionName[] = [...SECTIONS, QUESTION_SECTION];
 
 export type ParsedBody = {
   /** The first non-blank line, trimmed. */
@@ -49,7 +52,7 @@ export function parsePrBody(body: string | null | undefined): ParsedBody {
     const h = HEADING.exec(line);
     if (h) {
       flush();
-      const name = SECTIONS.find((s) => s.toLowerCase() === h[1].toLowerCase()) ?? null;
+      const name = KNOWN.find((s) => s.toLowerCase() === h[1].toLowerCase()) ?? null;
       current = name;
       buffer = [];
     } else if (current) {

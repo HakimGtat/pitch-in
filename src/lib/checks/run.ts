@@ -12,7 +12,7 @@ import { checkCriteria } from "./criteria";
 import { changedLineMap } from "./diff";
 import { checkEvidence } from "./evidence";
 import type { ChangedFile } from "./files";
-import { parseTaskLine } from "./pr-body";
+import { hasContent, parsePrBody, parseTaskLine, QUESTION_SECTION } from "./pr-body";
 import { buildExcerpts, type Excerpt } from "./excerpts";
 import { checkScope } from "./scope";
 import { checkSecrets, type SecretScanner } from "./secrets";
@@ -218,6 +218,16 @@ export async function runChecks(
     if (isQuestion(c.body)) {
       await recordQuestion(db, { repoId: repo.id, prNumber: pr.number, commentId: c.id, body: c.body, commenter: c.author }, now);
     }
+  }
+  // ...or in the PR's description, as a "## Question for owner" section (it arrives with pull_request events).
+  const asked = parsePrBody(pr.body).sections[QUESTION_SECTION];
+  if (hasContent(asked)) {
+    await recordQuestion(
+      db,
+      // One description question per PR, keyed by the submission (negative, so it can't clash with a GitHub comment id).
+      { repoId: repo.id, prNumber: pr.number, commentId: -submission.id, body: `Question for owner: ${asked}`, commenter: pr.author },
+      now,
+    );
   }
 
   const files = await withContentForUnpatched(deps.gh, repo.fullName, pr.headSha, await deps.gh.listPullRequestFiles(repo.fullName, pr.number));

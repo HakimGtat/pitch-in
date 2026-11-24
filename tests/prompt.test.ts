@@ -129,7 +129,7 @@ describe("the contributor rules", () => {
   it("prefer an assumption, and ask the owner on the PR only when a wrong guess would waste the run", () => {
     expect(p).toContain('note it under "Not done or assumed" and carry on');
     expect(p).toContain("when a wrong guess would waste the whole run");
-    expect(p).toContain('a comment starting "Question for owner:"');
+    expect(p).toContain('end its description with a "## Question for owner" section');
   });
 
   it("never make the contributor wait or come back: a question ends the run, and the owner takes over", () => {

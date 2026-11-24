@@ -110,7 +110,7 @@ export function buildPrompt({ task, repo, project, milestone }: PromptInput): st
       ? "- There's no test command for this task, so check the result against every acceptance criterion yourself."
       : "- The test command and the full suite must pass before you finish.",
     "- Don't run commands other than the repo's own setup and test commands.",
-    '- If something is unclear, take the likeliest reading, note it under "Not done or assumed" and carry on. Only when a wrong guess would waste the whole run: open the PR as a draft with what you have, add a comment starting "Question for owner:" with one question, the options you see and the one you would take, and end the run there. Don\'t wait for an answer: the owner takes it from there.',
+    '- If something is unclear, take the likeliest reading, note it under "Not done or assumed" and carry on. Only when a wrong guess would waste the whole run: open the PR as a draft with what you have, end its description with a "## Question for owner" section holding one question, the options you see and the one you would take, and end the run there. Don\'t wait for an answer: the owner takes it from there.',
     "- Before you open the PR, review your own diff a second time, independently, against every acceptance criterion, for example with a fresh subagent asked to find problems. Fix what it finds and run the tests again.",
     "- Then check its shape yourself, the way Pitch In will: under the line cap, only allowed paths touched, every template section filled, every criterion copied word for word with one pointer that lands on lines your diff changed.",
   );
