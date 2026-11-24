@@ -286,9 +286,9 @@ describe("linking PRs", () => {
       await expect(linkPastedPr(db, alice.id, taskId, url(), t0)).rejects.toThrow(/already linked/);
     });
 
-    it("refuses when nobody holds the task", async () => {
+    it("refuses someone who handed the task back", async () => {
       await handBack(db, alice.id, taskId, t0);
-      await expect(linkPastedPr(db, owner.id, taskId, url(), t0)).rejects.toThrow(/Nobody has taken/);
+      await expect(linkPastedPr(db, alice.id, taskId, url(), t0)).rejects.toThrow(/Only the person who took this on, or its owner/);
     });
 
     it("refuses a PR already linked to another task", async () => {

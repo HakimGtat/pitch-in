@@ -81,6 +81,8 @@ export function canAdoptTask(
   if (task.status === "closed") return deny("The owner closed this task.");
   if (IN_REVIEW.has(task.status)) return deny("A PR for this task is in review.");
   if (task.holder) return holderReason(actor, task.holder, task.hasOpenPr);
+  // Nobody holds it but a PR is open: the owner is doing it themself.
+  if (task.hasOpenPr) return deny("The owner has a PR open for this task.");
   const own = ownWork(actor, task.ownerId);
   if (own) return own;
 
@@ -113,7 +115,7 @@ export function canAdoptMilestone(
       ? { ok: false, reason: "You're already working on this milestone." }
       : { ok: false, reason: `@${held.holder.handle} is already working on this milestone.` };
   }
-  if (live.some((t) => IN_REVIEW.has(t.status))) {
+  if (live.some((t) => IN_REVIEW.has(t.status) || t.hasOpenPr)) {
     return { ok: false, reason: "Part of this milestone is in review. Take on its next task once that's merged." };
   }
   const own = ownWork(actor, milestone.ownerId);

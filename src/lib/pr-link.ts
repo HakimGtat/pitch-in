@@ -101,6 +101,9 @@ async function existingLink(db: Db, repoId: number, number: number, exceptTaskId
 
 const OPEN = new Set<string>(OPEN_SUBMISSION);
 
+/** A PR by the task's own owner. */
+const isOwnPr = (task: FullTaskView, authorHandle: string) => task.ownerHandle.toLowerCase() === authorHandle.toLowerCase();
+
 /** Who an adoption row belongs to (used for one whose 48 hours ran out with nobody else taking the task). */
 async function adopterOf(db: Db, adoptionId: number): Promise<{ userId: number; handle: string } | null> {
   const [row] = await db
@@ -219,11 +222,14 @@ export async function linkPullRequest(db: Db, pr: PullRequestInfo, now: Date = n
     authorHandle: pr.authorHandle,
   });
 
-  if (!decision.linked || !task?.holder) {
+  // The owner doing their own task (nobody holds it): it links as owner-done, with no "helped ship" credit.
+  const ownerDone = Boolean(task && !task.holder && isOwnPr(task, pr.authorHandle));
+  if (!task || (!ownerDone && (!decision.linked || !task.holder))) {
     return noteUnlinked(db, pr, decision.linked ? "Nobody has taken on this task right now." : decision.reason, taskId);
   }
   const other = await otherOpenPr(db, task.id, pr.number);
   if (other !== null) return noteUnlinked(db, pr, oneTaskOnePr(task.id, other), task.id);
+  const authorId = ownerDone ? task.ownerId : task.holder!.userId;
 
   const [row] = await db
     .insert(submissions)
@@ -231,7 +237,7 @@ export async function linkPullRequest(db: Db, pr: PullRequestInfo, now: Date = n
       taskId: task.id,
       prNumber: pr.number,
       headSha: pr.headSha,
-      authorId: task.holder.userId,
+      authorId,
       status: "checking",
       createdAt: now,
       updatedAt: now,
@@ -241,10 +247,10 @@ export async function linkPullRequest(db: Db, pr: PullRequestInfo, now: Date = n
   const submissionId = row?.id ?? (await existingLink(db, pr.repoId, pr.number))!.id;
   if (row) {
     await writeAudit(db, {
-      actorId: task.holder.userId,
+      actorId: authorId,
       action: "pr.linked",
       target: prTarget(pr.repoFullName, pr.number),
-      details: { taskId: task.id, how: "task line", draft: pr.draft },
+      details: { taskId: task.id, how: ownerDone ? "owner's own PR" : "task line", draft: pr.draft },
     });
   }
   return { status: "linked", taskId: task.id, submissionId };
@@ -309,8 +315,11 @@ export async function linkPastedPr(
     throw new PermissionError("Only the person who took this on, or its owner, can link a PR.");
   }
   if (task.status === "merged" || task.status === "closed") throw new PermissionError("This task is already finished.");
-  if (!task.holder && !lapsed) throw new PermissionError("Nobody has taken this task on, so there is no PR to link.");
-  const holder = task.holder ?? { userId: lapsed!.userId };
+  // Nobody holds it: only the owner's own work can be linked, as owner-done.
+  if (!task.holder && !lapsed && actor.id !== task.ownerId) {
+    throw new PermissionError("Nobody has taken this task on, so there is no PR to link.");
+  }
+  const holder = task.holder ?? (lapsed ? { userId: lapsed.userId } : { userId: task.ownerId });
 
   const parsed = parsePrUrl(text);
   if (!parsed) throw new PermissionError("Paste the PR's web address, like https://github.com/owner/repo/pull/12.");

@@ -36,6 +36,7 @@ export function TaskState({ task, waiting = false, viewerId }: { task: FullTaskV
   if (task.status === "merged") return <Badge tone="brand">Done</Badge>;
   if (task.status === "closed") return <Badge>Closed</Badge>;
   if (task.status === "in_review" || task.status === "changes_requested") return <Badge tone="amber">In review</Badge>;
+  if (!task.holder && task.hasOpenPr) return <Badge tone="amber">Owner&apos;s PR open</Badge>;
   if (task.holder) {
     return task.holder.userId === viewerId ? (
       <Badge tone="brand">Yours</Badge>
