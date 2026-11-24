@@ -6,7 +6,7 @@ The pitch is "pick up part of a coworker's project", not token sharing. Contribu
 
 Working name: Pitch In (check for clashes before any public version). The folder stays `ShareAt0ken` for now.
 
-**Status:** Milestone 1 is done (2026-11-23, verified live against a test org). Milestone 2 is built and checked live (2026-11-23, see its section for the one step left). Milestone 3 is next.
+**Status:** Milestone 1 is done (2026-11-23, verified live against a test org). Milestone 2 is built and checked live (2026-11-23, see its section for the one step left). Milestone 3 (plan import) is next, so that Milestone 4 (checks and review) can be posted on the board from this plan.
 
 ## Constraints
 
@@ -60,7 +60,7 @@ Each person also sets **"How much do you want to take on?"** on their profile (s
 
 1. The company does the one-time [setup checklist](#company-setup-checklist).
 2. A coworker connects their project's repo (it must have CI) and commits a `PROJECT_BRIEF.md`. A repo without one connects with a warning, so writing it can be the repo's first task.
-3. The owner plans the project with their own agent (**Plan in Claude**), pastes the result into the site, and the brief checker runs on every task. Single tasks and small changes go through the task form. Each task has a Task Brief, an estimate and allowed paths. (Plan in Claude arrives in Milestone 4; until then owners post through the forms.)
+3. The owner plans the project with their own agent (**Plan in Claude**), pastes the result into the site, and the brief checker runs on every task. Single tasks and small changes go through the task form. Each task has a Task Brief, an estimate and allowed paths. (Plan in Claude arrives in Milestone 3; until then owners post through the forms.)
 4. A coworker picks how much they want to take on. The board shows work that fits, and they adopt one task or a whole milestone (48-hour lock).
 5. They click **Start in Claude**. Claude Code on the web opens with the repo and prompt filled in. They press Enter and wait. Their agent builds the work, reviews its own diff against the brief, and opens the PR in the [token-saving format](#review-friendly-prs). If it's blocked, it [asks the owner on the draft PR](#questions-between-agents). Claude Code on the web opens the PR itself, as a **draft** (the prototype saw this; there was no Create PR step to click). They come back to the site and click **Check for my PR**. Developers can instead copy the brief into any agent.
 6. The PR body starts with `Task: <task id>` so the site links it. In the prototype the PR kept that first line and all six template sections, so the paste-the-link fallback is kept but was not needed. The PR is authored by the contributor's own GitHub account, which is what "only the adopter's PR links" relies on (the account Claude is connected to must match the username they signed in with). If it doesn't link, the contributor pastes the PR link into the task page.
@@ -73,7 +73,7 @@ Each person also sets **"How much do you want to take on?"** on their profile (s
 The owner's Claude usage is the scarcest thing in the loop, so every step runs at the cheapest layer that can do it:
 
 1. **The site's checks:** plain code with fixed rules, no AI and no tokens. They catch everything that can be checked mechanically, before the owner sees anything.
-2. **The contributor's agent:** builds the work, reviews its own diff, and writes the PR so the owner's agent can verify it by following pointers instead of searching.
+2. **The contributor's agent:** builds the work with no limit on its own usage, reviews it twice, and writes the PR so the owner's agent can verify it by following pointers instead of searching. Contributor usage is never the thing to save.
 3. **The owner's agent:** plans each project once, then makes the final call on each PR from a review packet the site prepares, never from the whole repo.
 
 The owner always reviews with their own agent; nobody else reviews. Re-reviews read only what changed, and agents ask the owner questions only when a wrong guess would waste the run.
@@ -145,10 +145,12 @@ Every task ships with a brief written so an agent with no prior knowledge of the
 - **Task Brief:** written on the site, per task.
 - **Project and milestone goals:** written on the site when posting a project, added to every task's prompt.
 
-### Planning a project with the owner's agent (Milestone 4)
+### Planning a project with the owner's agent (Milestone 3)
 
-- **Plan in Claude:** the "Post a project" page has a link, built like Start in Claude, plus a copy-paste version. It opens the owner's own Claude Code session on the repo with a fixed planning prompt. The prompt is the same for every project, so the link stays well inside the tested length; the owner describes the goal in the session.
-- The agent reads `PROJECT_BRIEF.md` and the repo, then splits the goal into milestones and tasks by these rules: one task is one PR and one session; each estimate is within the repo's largest; files to look at are real paths; briefs stay under 500 words; tasks are in dependency order; each milestone ends at something usable.
+- **Plan in Claude:** the "Post a project" page has a link, built like Start in Claude, plus a copy-paste version. It opens the owner's own Claude Code session on the repo with a fixed planning prompt. The prompt is the same for every project, so the link stays well inside the tested length.
+- **It starts from a plan the owner already has.** The owner names a plan file and a section (for example "Milestone 4 of `plan.md`"), or describes the goal in the session when there's no plan. Splitting is the one step the owner's agent does, on purpose: it's a small, one-time cost, it saves a separate review of someone else's breakdown, and the acceptance criteria it writes are what every later review checks against.
+- To keep that cost small, the agent reformats the plan rather than redesigning it: it reads that section, `PROJECT_BRIEF.md` and the repo map, and opens a file only to confirm a path. It never reads the whole codebase; contributors do that.
+- It splits the work into milestones and tasks by these rules: one task is one PR and one session; each estimate is within the repo's largest; files to look at are real paths; briefs stay under 500 words; tasks are in dependency order; each milestone ends at something usable.
 - It answers with one JSON block in the import format: the project's title and goal, each milestone's title and goal, and every Task Brief field for each task.
 - **Import:** the owner pastes the block into the site. The site parses it, runs the brief checker on every task (free), and shows one preview page with all the flags. The owner fixes them (by hand or by asking their agent), then posts the whole project at once. Tasks stay editable until someone takes them on.
 - JSON rather than Markdown because it parses exactly; the preview page shows it to the owner as readable briefs.
@@ -181,7 +183,8 @@ Every task ships with a brief written so an agent with no prior knowledge of the
 ### How the brief reaches the agent
 
 - **Start in Claude:** the task page builds a link to Claude Code on the web: `https://claude.ai/code?prompt=<url-encoded prompt>&repositories=<owner>/<repo>`. Nothing is sent until the person presses Enter. The prompt stays short (the prototype's links ran about 3,200 to 3,600 characters and worked; `prompt_url` is the fallback if a longer brief breaks): the project and milestone goals if any, the Task Brief, "read PROJECT_BRIEF.md first" (it's already in the repo), the off-limits paths from repo settings, and "open the PR with the template below, starting with `Task: <task id>`".
-- The prompt also sets the contributor's side of the [owner's usage rules](#keeping-the-owners-usage-low): before finishing, the agent re-reads its own diff against every acceptance criterion, runs the test command, and fills in the PR template with evidence pointers. When something is unclear, it writes down an assumption and carries on, and asks the owner only when a wrong guess would waste the run.
+- **Contributors trade their own usage for quality.** Only the owner's usage is kept low; the contributor's agent is told to spend whatever it takes to get the work right: read as much of the repo as it needs, write thorough tests, run the full test suite (not only the brief's test command), and before opening the PR do a second, independent review pass of its own diff against every acceptance criterion (for example a fresh subagent asked to find problems). Then it fills in the PR template with evidence pointers, so the owner's agent checks lines instead of searching.
+- When something is unclear, it writes down an assumption and carries on, and asks the owner only when a wrong guess would waste the run, since questions cost the owner usage.
 - **Copy brief:** copies the same text, plus a .md download, for any other agent.
 - There are no personal access tokens in the MVP. Those come back with the MCP server (see Later).
 
@@ -351,7 +354,7 @@ A repo without CI can't be connected at all. Docs and research repos need at lea
 
 The owner reviews every PR with their own agent. The site prepares a **review packet** for free from the PR and the diff: the Summary, each acceptance criterion with its evidence, Where to look, Not done or assumed, the check results, and only the changed lines around each pointer. For non-code tasks it links straight to the rendered output file on GitHub. A draft shows a "mark Ready for review on GitHub first" note.
 
-**Review in Claude** opens the owner's own session with the PR link, the brief's acceptance criteria and the packet filled in, plus reading rules that keep it cheap: start from the packet; open only the PR's own files, and only where a pointer needs context; never browse the rest of the repo; never re-run tests or re-check what the checks already proved (size, scope, secrets, template, CI). How the packet reaches the agent when it's longer than a link holds (copy and .md download as with Copy brief, or the check run's summary on GitHub) is settled in Milestone 3.
+**Review in Claude** opens the owner's own session with the PR link, the brief's acceptance criteria and the packet filled in, plus reading rules that keep it cheap: start from the packet; open only the PR's own files, and only where a pointer needs context; never browse the rest of the repo; never re-run tests or re-check what the checks already proved (size, scope, secrets, template, CI). How the packet reaches the agent when it's longer than a link holds (copy and .md download as with Copy brief, or the check run's summary on GitHub) is settled in Milestone 4.
 
 The owner's agent answers with one of three outcomes, which the owner carries out:
 
@@ -397,7 +400,7 @@ Hosting:
 
 **smee trade-off:** anyone with the channel URL can see what passes through it: PR titles and descriptions, file names and commit messages, but not the code itself. smee doesn't keep events for a relay that's offline, so webhooks sent while the machine is off are missed (GitHub can redeliver them). That's acceptable for a trial on low-stakes repos. Direct webhooks on a real host are on the pitch list.
 
-GitHub App permissions: read contents, metadata, commit statuses and organization members; read and write pull requests (comments, closing); write checks. Listen for `installation`, `pull_request`, `check_suite`, `push` and `issue_comment` events (`issue_comment` for agents' questions, from Milestone 3). An App registered before Milestone 3 needs `issue_comment` switched on in its GitHub settings, a one-time step for an org owner.
+GitHub App permissions: read contents, metadata, commit statuses and organization members; read and write pull requests (comments, closing); write checks. Listen for `installation`, `pull_request`, `check_suite`, `push` and `issue_comment` events (`issue_comment` for agents' questions, from Milestone 4). An App registered before Milestone 4 needs `issue_comment` switched on in its GitHub settings, a one-time step for an org owner.
 
 ```
 Coworkers -> Web app (Next.js) <-> PostgreSQL
@@ -419,8 +422,8 @@ Milestone 1 created users, repos, tasks, adoptions, submissions, reviews, jobs, 
 | milestones (new) | project_id, position, title, goal, status (open, in_progress, done) |
 | tasks | repo_id, project_id and milestone_id (new, optional), position (new), owner_id, title, kind (code or other; new), brief (the structured fields; new), brief_md, size_tier (small, medium, large), allowed_paths, status |
 | adoptions | task_id, milestone_id (new, set for whole-milestone adoptions), user_id, expires_at, status (active, released, expired, completed) |
-| submissions | task_id, pr_number, head_sha, author_id, check_results, usage_note, fix_round, last_reviewed_sha (planned, Milestone 3: re-reviews read only what changed), status |
-| questions (planned, Milestone 3) | submission_id, github_comment_id, asked_at, answered_at |
+| submissions | task_id, pr_number, head_sha, author_id, check_results, usage_note, fix_round, last_reviewed_sha (planned, Milestone 4: re-reviews read only what changed), status |
+| questions (planned, Milestone 4) | submission_id, github_comment_id, asked_at, answered_at |
 | reviews | submission_id, reviewer_id, decision, comments |
 | jobs | type, payload, status, attempts, run_after, dedupe_key |
 | alerts | repo_id, kind (unreviewed_merge or direct_push), details, created_at, resolved_at |
@@ -461,21 +464,23 @@ Work through these in order. Finish each one (tests passing) before starting the
 - Done when: a coworker with write access posts a project with two milestones; someone who picked "a quick run" sees only Small tasks; a different member adopts a whole milestone; adopting any of its tasks again is blocked; the lock lapses at 48 hours (tested with a fake clock); and "Start in Claude" opens a session with the repo and brief filled in.
 - How it was checked (2026-11-23): 169 tests, plus a live run against the `PromptIn-test` org with `PromptIn-test/pitch-in-sample` (a public copy of the prototype's sample repo, sample data). The repo connected with CI and `PROJECT_BRIEF.md` read. A project with two milestones and four tasks was posted through the forms, and the brief checker caught a bad brief. "A quick run" showed only the two Small tasks. A sample user (`src/scripts/sample-adopt.ts`, sample data, standing in for a second person) adopted milestone 1, and its tasks then showed as taken with no way to adopt them. The 48-hour lapse is covered by fake-clock tests. Start in Claude opened Claude Code on the web with the full prompt filled in, but the org repo wasn't preselected because Claude's GitHub App isn't installed on `PromptIn-test` yet (setup checklist step 5); the same link format did preselect a repo that Claude's App can see. **Left to do:** install Claude's GitHub App on `PromptIn-test` and open Start in Claude once more.
 
-### Milestone 3: Checks and review
+### Milestone 3: Plan import
+Comes before checks and review, so that Milestone 4 itself can be posted on the board from `plan.md` instead of through the task forms.
+- Plan in Claude on the "Post a project" page: the fixed planning prompt for the owner's own session (and a copy-paste version), taking a plan file and a section ("Milestone 4 of `plan.md`"), with the splitting rules and the import format.
+- Import: paste the agent's JSON; the site parses it, runs the brief checker on every task, shows one preview with all the flags, and posts the project, its milestones and tasks together.
+- Start in Claude's prompt switches to the contributor rules under [How the brief reaches the agent](#how-the-brief-reaches-the-agent): thoroughness over economy, a second review pass, and the new PR template (the checks that enforce the template come in Milestone 4).
+- Done when: the owner's agent turns the Milestone 4 section of this `plan.md` into a project with tasks in the import format; the import flags a task whose files don't exist in the repo; after the fix, the whole project posts in one go on a connected repo; and a task from it opens in Start in Claude with the new contributor rules.
+- To post Pitch In's own work, its repo must be one the Pitch In App can see: a copy in the `PromptIn-test` org (like the sample repo) or the App installed on the account that holds it. Until Milestone 4 is built, PRs for those tasks are reviewed on GitHub with the owner's agent.
+
+### Milestone 4: Checks and review
 - Link PRs from the `Task: <id>` line, with the paste-the-link fallback; only the adopter's PRs link. Drafts link and get checked.
 - The seven checks (template, size, scope, secrets, CI, criteria, evidence) as plain code, posted as one GitHub check run; gitleaks joins the image.
-- The token-saving PR template and the self-review step in the Start in Claude prompt.
 - The review packet and Review in Claude for the owner's agent: accept (merge on GitHub), reject with adjustments, or reject outright, as GitHub comments. Re-reviews read only what changed since the last review, plus the contributor's fix report.
 - Questions between agents on the draft PR, with "waiting on owner" and Answer in Claude.
 - The task closes and the milestone moves on when GitHub reports the merge; milestone adoptions renew their lock on each PR.
 - The 72-hour fix window; one fix round with "Continue in Claude" for guided users.
 - Unreviewed-merge alert, using GitHub's collaborator permission API to recognise repo admins.
 - Done when: an oversized PR and a PR with a dangling evidence pointer are flagged; a clean one reaches the owner, whose agent reviews it through Review in Claude; a reject-with-adjustments round re-reviews only the changed lines; a question on a draft PR shows as waiting on the owner; merging on GitHub closes the task and moves its milestone to the next task; and a merge by the wrong person sets off the alert.
-
-### Milestone 4: Planning with the owner's agent
-- Plan in Claude on the "Post a project" page: the fixed planning prompt for the owner's own session (and a copy-paste version), with the splitting rules and the import format.
-- Import: paste the agent's JSON; the site parses it, runs the brief checker on every task, shows one preview with all the flags, and posts the project, its milestones and tasks together.
-- Done when: an owner's agent turns a goal into a project with at least two milestones in the import format; the import flags a task whose files don't exist in the repo; and after the fix, the whole project posts in one go.
 
 ### Milestone 5: Demo-org trial
 - A free GitHub org I own, with public sample repos of different kinds (a small website, an automation script, a research repo) and sample projects and tasks, clearly labeled as sample data. Public repos get branch protection for free.
@@ -552,7 +557,7 @@ Hitting them is the case for the pitch list.
 
 ## Prompt for the next milestone
 
-> Read plan.md. Start Milestone 3 only. Before writing code, interview me on anything the plan leaves open (with a recommendation for each), then show me a short plan. Link PRs to tasks from the `Task: <id>` first line, with the paste-the-link fallback and "Check for my PR" (only the current adopter's PRs link; drafts link and get checked). Add gitleaks to the image and run the seven checks (plain code, no AI) in the worker as one GitHub check run. Put the token-saving PR template and the self-review step in the Start in Claude prompt. Build the review packet and Review in Claude for the owner's agent, with accept, reject with adjustments and reject outright as GitHub comments, and re-reviews that read only what changed. Add questions between agents on the draft PR. Close the task and move the milestone on when GitHub reports the merge, renew milestone locks on each PR, and add the 72-hour fix window, one fix round for guided users, and the unreviewed-merge alert using GitHub's collaborator permission API. Write tests first for the seven checks, PR linking, the review packet and the alert. Stop when Milestone 3's "Done when" is met and summarize what you built.
+> Read plan.md. Start Milestone 3 (plan import) only. Before writing code, interview me on anything the plan leaves open (with a recommendation for each), then show me a short plan. Build Plan in Claude on the "Post a project" page: a fixed planning prompt (link and copy-paste) that takes a plan file and section, follows the splitting rules, reads only that section, `PROJECT_BRIEF.md` and the repo map, and answers in the JSON import format. Build the import: paste the JSON, parse it, run the brief checker on every task, show one preview with all the flags, and post the project, milestones and tasks together. Switch the Start in Claude prompt to the contributor rules (thoroughness over economy, a second review pass, the new PR template). Write tests first for the import parser and validation, and the prompts. Stop when Milestone 3's "Done when" is met and summarize what you built.
 
 ## Sources
 

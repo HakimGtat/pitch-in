@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Milestones 1 (foundation) and 2 (projects, tasks and briefs) are built; Milestone 3 (checks and review) is next. **Pitch In** is an internal board where coworkers post the projects they build with AI (websites, games, apps, research, automation) as single tasks or projects with milestones, and any coworker takes on as much as they want, runs it in their own Claude session, and opens a PR for the owner to review. Every task ends as a PR in a company GitHub repo, code or not.
+Milestones 1 (foundation) and 2 (projects, tasks and briefs) are built; Milestone 3 (plan import) is next, then Milestone 4 (checks and review). **Pitch In** is an internal board where coworkers post the projects they build with AI (websites, games, apps, research, automation) as single tasks or projects with milestones, and any coworker takes on as much as they want, runs it in their own Claude session, and opens a PR for the owner to review. Every task ends as a PR in a company GitHub repo, code or not.
 
 - `plan.md` is the source of truth: decisions, data model, checks, milestones, and the prompt for the next milestone.
 - `plan-v1.md` is the pre-review version, kept locally for reference only and ignored by git (the repo is public). It is out of date (Vercel, 72-hour locks, token-sharing pitch); never build from it or commit it.
@@ -45,9 +45,9 @@ Build one milestone at a time, in the order `plan.md` lists them, and stop when 
 
 ## Architecture (planned)
 
-One Docker image (Next.js + TypeScript web app, a worker, the smee relay, and the gitleaks binary from Milestone 3) plus Postgres, run with `docker compose`.
+One Docker image (Next.js + TypeScript web app, a worker, the smee relay, and the gitleaks binary from Milestone 4) plus Postgres, run with `docker compose`.
 
-- **Web app:** board (projects, milestones and tasks, filtered by how much the person wants to take on), task and project forms with the brief checker, plan import (Milestone 4), the review packet with Review in Claude, admin screen, GitHub OAuth sign-in, and the GitHub App webhook receiver.
+- **Web app:** board (projects, milestones and tasks, filtered by how much the person wants to take on), task and project forms with the brief checker, plan import (Milestone 3), the review packet with Review in Claude, admin screen, GitHub OAuth sign-in, and the GitHub App webhook receiver.
 - **Worker:** polls a `jobs` table in Postgres (no extra queue service), fetches PR diffs, runs the seven checks (template, size, scope, secrets via gitleaks, CI status, criteria, evidence) as plain code with no AI, and posts one GitHub check run per linked PR.
 - **GitHub App:** each company registers its own through GitHub's manifest flow. Webhooks reach a machine with no public address through a smee.io relay, in development and during the trial.
 
@@ -57,7 +57,7 @@ Behaviour that spans several parts of the code:
 - **PR linking:** a PR links to a task through a `Task: <id>` first line in its body, or through a link the contributor pastes. Only the current adopter's PR links; anyone else's gets a failing check.
 - **Unreviewed-merge alert:** free GitHub orgs can't protect branches on private repos, so the site flags any merge not done by the task owner or a repo admin, and any push to the default branch that didn't come through an owner-merged PR.
 - **Repos without CI can't be connected.** The CI check ignores the site's own check run.
-- **Owner's usage comes first:** work runs at the cheapest layer that can do it (the site's free checks, then the contributor's agent, then the owner's agent on a prepared review packet). The owner reviews every PR with their own agent; nobody else reviews. Anything the site can work out for free never goes in a prompt or a PR body.
+- **Owner's usage comes first:** work runs at the cheapest layer that can do it (the site's free checks, then the contributor's agent, then the owner's agent on a prepared review packet). Contributor usage is never the thing to save: their prompts ask for thoroughness, full test runs and a second review pass. The owner reviews every PR with their own agent; nobody else reviews. Anything the site can work out for free never goes in a prompt or a PR body.
 - **Questions between agents** go through PR comments starting `Question for owner:` on the draft PR (`issue_comment` webhook); agents never talk live.
 
 Write tests first for the core rules: the brief checker, the seven PR checks, the review packet, plan import, the adoption lock (with an injectable clock), milestone adoption and hand-back, the "work that fits" filter, the permission rules, PR linking and the unreviewed-merge alert.
