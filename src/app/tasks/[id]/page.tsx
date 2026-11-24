@@ -6,6 +6,7 @@ import {
   adoptTaskAction,
   closeTaskAction,
   handBackAction,
+  linkPrAction,
   releaseAction,
 } from "@/app/work-actions";
 import { CopyButton } from "@/components/copy-button";
@@ -207,6 +208,26 @@ export default async function TaskPage({
                   </details>
                 </>
               )}
+            </Card>
+          ) : null}
+
+          {task.holder && (mine || user.id === task.ownerId) && !finished ? (
+            <Card>
+              <h2 className="font-semibold">Link a PR</h2>
+              <p className="mt-2 text-sm text-stone-600">
+                A PR whose description starts with <code>Task: {taskRef(task.id)}</code> links by itself. If it didn&apos;t, paste its
+                address here.
+              </p>
+              <form action={linkPrAction} className="mt-3 space-y-2">
+                <input type="hidden" name="taskId" value={task.id} />
+                <input
+                  name="prUrl"
+                  required
+                  placeholder="https://github.com/owner/repo/pull/12"
+                  className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm"
+                />
+                <button className={secondaryButtonClass}>Link PR</button>
+              </form>
             </Card>
           ) : null}
 
