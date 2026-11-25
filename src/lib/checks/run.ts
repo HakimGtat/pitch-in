@@ -54,6 +54,10 @@ export type StoredChecks = {
   excerpts: Excerpt[];
   /** The task owner's review was requested on GitHub once the PR passed (done once per PR). */
   reviewRequested?: boolean;
+  /** When this PR first passed its gates and became ready for review (for the Trial panel's review wait). */
+  readyAt?: string | null;
+  /** The results of the PR's very first check run (for first-pass rates). */
+  firstResults?: CheckResult[];
 };
 
 export const checksJobKey = (job: ChecksJob, headSha: string) => `checks:${job.repoId}#${job.prNumber}@${headSha}`;
@@ -291,6 +295,9 @@ export async function runChecks(
     excerpts: buildExcerpts(pr.body, task.brief.acceptance, files),
     // Once per PR: GitHub keeps a review request across later pushes.
     reviewRequested: previous?.reviewRequested ?? false,
+    readyAt: previous?.readyAt ?? (!ciPending && failed === 0 ? now.toISOString() : null),
+    // The first run that finished (not one still waiting for CI) is the first pass.
+    firstResults: previous?.firstResults ?? (ciPending ? undefined : results),
   };
   const status: Submission["status"] = ciPending ? "checking" : failed === 0 ? "in_review" : "checks_failed";
 

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui";
 import { listUsers } from "@/lib/admin";
 import { describeAlert, listOpenAlerts } from "@/lib/alerts";
+import { loadTrialReport } from "@/lib/trial";
 import { recentAudit } from "@/lib/audit";
 import { requireAdmin } from "@/lib/auth/current-user";
 import { getConfig } from "@/lib/config";
@@ -48,12 +49,13 @@ export default async function Admin({
   const { notice, error } = await searchParams;
   const config = getConfig();
   const db = getDb();
-  const [people, audit, webhooks, github, openAlerts] = await Promise.all([
+  const [people, audit, webhooks, github, openAlerts, trial] = await Promise.all([
     listUsers(db),
     recentAudit(db, 50),
     recentJobs(db, WEBHOOK_JOB, 10),
     getGitHubStatus(config),
     listOpenAlerts(db),
+    loadTrialReport(db),
   ]);
   const mainAdmin = people.find((p) => p.isMainAdmin);
   const handOverTargets = people.filter((p) => canHandOverMainAdmin(me, p).ok);
@@ -69,6 +71,50 @@ export default async function Admin({
       </div>
       {notice ? <Notice kind="success">{notice}</Notice> : null}
       {error ? <Notice kind="error">{error}</Notice> : null}
+
+      <Section title="Trial" aside={<span className="text-sm text-stone-500">From what the site records; always current</span>}>
+        <ul className="space-y-1 text-sm">
+          {trial.targets.map((t) => (
+            <li key={t.label} className="flex flex-wrap justify-between gap-2">
+              <span>
+                <span className={t.met ? "text-brand-700" : "text-stone-400"}>{t.met ? "✓" : "○"}</span> {t.label}
+              </span>
+              <span className="font-medium">{t.value}</span>
+            </li>
+          ))}
+          <li className="text-stone-500">Owners saying they&apos;d keep using it: ask them at the end of the trial.</li>
+        </ul>
+        <div className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+          <div>
+            <h3 className="font-semibold">Merged</h3>
+            <p className="mt-1 text-stone-700">
+              {trial.merged.total} in all: {trial.merged.byContributors} by coworkers ({trial.merged.byProfile.developer} Developer,{" "}
+              {trial.merged.byProfile.guided} Guided), {trial.merged.byOwners} by their owners.
+            </p>
+            <p className="text-stone-600">
+              Code {trial.merged.byKind.code}, other {trial.merged.byKind.other}. Small {trial.merged.byTier.small}, Medium{" "}
+              {trial.merged.byTier.medium}, Large {trial.merged.byTier.large}.
+            </p>
+            <p className="text-stone-600">
+              Reopened: {trial.reopens.developer} Developer, {trial.reopens.guided} Guided.
+            </p>
+            <h3 className="mt-3 font-semibold">Right now</h3>
+            <p className="mt-1 text-stone-700">
+              {trial.now.prsWaitingOnOwner} PRs waiting on owners, {trial.now.openQuestions} open questions, {trial.now.openAlerts} open alerts.
+            </p>
+          </div>
+          <div>
+            <h3 className="font-semibold">First-pass rate per check</h3>
+            <ul className="mt-1 font-mono text-xs text-stone-700">
+              {trial.firstPass.map((f) => (
+                <li key={f.name} className="whitespace-pre">
+                  {`${f.name.padEnd(9, " ")} ${f.of ? `${Math.round((f.passed / f.of) * 100)}% of ${f.of}` : "no data yet"}`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </Section>
 
       {openAlerts.length ? (
         <Section title="Alerts" aside={<span className="text-sm text-stone-500">{openAlerts.length} open</span>}>
