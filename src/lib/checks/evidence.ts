@@ -4,7 +4,7 @@ import { failed, listSome, passed, type CheckResult } from "./types";
 
 /** A criterion like "All existing tests pass" or "CI is green": the only kind `CI` can point to. */
 export const aboutTestsPassing = (criterion: string) =>
-  /\b(tests?|ci|checks?|builds?|lint|suite)\b/i.test(criterion) && /\b(pass|passes|passing|green|succeeds?)\b/i.test(criterion);
+  /\b(tests?|ci|checks?|builds?|\w*lint|suite)\b/i.test(criterion) && /\b(pass|passes|passing|green|succeeds?)\b/i.test(criterion);
 
 /**
  * Evidence: each criterion's pointer lands inside a changed part of the diff,

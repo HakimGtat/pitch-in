@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { and, eq } from "drizzle-orm";
 import { adoptMilestone, handBack } from "@/lib/adoption";
 import { checkBrief, emptyBrief, type BriefDraft } from "@/lib/brief";
@@ -11,7 +12,7 @@ import { adoptions, repos, tasks, users } from "@/lib/db/schema";
 //
 //   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data adopt <milestoneId>
 //   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data hand-back <milestoneId>
-//   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data post-task <repoId>
+//   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data post-task <repoId> [draft.json]
 //   npx tsx --env-file=.env src/scripts/sample-adopt.ts --sample-data start-link <taskId>
 //
 // adopt and hand-back go through the same code the site uses. start-link
@@ -33,7 +34,7 @@ async function main() {
     console.error("This creates a sample user (sample data). Pass --sample-data to confirm.");
     process.exit(1);
   }
-  const [command, idArg] = args.filter((a) => a !== "--sample-data");
+  const [command, idArg, draftFile] = args.filter((a) => a !== "--sample-data");
   const id = Number(idArg);
   if (!["adopt", "hand-back", "post-task", "start-link"].includes(command) || !Number.isInteger(id)) {
     console.error(
@@ -64,7 +65,11 @@ async function main() {
     if (command === "post-task") {
       const [repo] = await db.select().from(repos).where(eq(repos.id, id));
       if (!repo) throw new Error("No connected repo with that id.");
-      const draft: BriefDraft = {
+      // A draft from a JSON file ({ title, kind, sizeTier, allowedPaths, brief }), or the built-in readingTime task.
+      const fromFile = draftFile ? (JSON.parse(readFileSync(draftFile, "utf8")) as BriefDraft) : null;
+      const draft: BriefDraft = fromFile
+        ? { ...fromFile, brief: { ...emptyBrief(), ...fromFile.brief } }
+        : {
         title: "Add a readingTime helper (sample data)",
         kind: "code",
         sizeTier: "small",
@@ -83,6 +88,7 @@ async function main() {
           constraints: "No new dependencies; reuse wordCount.",
         },
       };
+      if (!/sample data/i.test(draft.title)) draft.title = `${draft.title} (sample data)`;
       const check = checkBrief(draft, { repoFullName: repo.fullName, settings: repo.settings, tree: null });
       if (check.errors.length) throw new Error(check.errors.map((e) => e.message).join("\n"));
       const [task] = await db
@@ -94,7 +100,7 @@ async function main() {
           kind: draft.kind,
           brief: draft.brief,
           briefMd: check.markdown,
-          sizeTier: "small",
+          sizeTier: draft.sizeTier ?? "small",
           allowedPaths: draft.allowedPaths,
         })
         .returning({ id: tasks.id });

@@ -179,7 +179,7 @@ describe("CI as a pointer", () => {
     expect(r.detail).toMatch(/^1 of 2 pointers/);
   });
   it("recognises the usual wordings", () => {
-    for (const c of ["All existing tests pass", "All tests pass", "CI is green", "The build succeeds", "npm test passes"]) {
+    for (const c of ["All existing tests pass", "All tests pass", "CI is green", "The build succeeds", "npm test passes", "Markdown lint passes", "markdownlint passes"]) {
       expect(aboutTestsPassing(c)).toBe(true);
     }
     expect(aboutTestsPassing("A new test covers non-string input")).toBe(false);
