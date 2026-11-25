@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addedLines, changedLineMap, deletionEdges, patchLines } from "@/lib/checks/diff";
-import { checkEvidence } from "@/lib/checks/evidence";
+import { aboutTestsPassing, checkEvidence } from "@/lib/checks/evidence";
 import { parsePointer } from "@/lib/checks/pr-body";
 
 // New-side lines 6, 7, 8 and 10 are added; 5, 9 and 11 are unchanged context.
@@ -168,5 +168,20 @@ describe("criteria typeset differently", () => {
 
   it("still fail when the words differ", () => {
     expect(checkEvidence(body(["- [x] slugify(null) throws an error -> src/slugify.js:7"]), [CRITERIA[0]], changed).passed).toBe(false);
+  });
+});
+
+describe("CI as a pointer", () => {
+  it("is only for a criterion about tests or CI passing", () => {
+    const r = checkEvidence(body(["- [x] slugify(null) throws a TypeError -> CI", "- [x] All existing tests pass -> CI"]), [CRITERIA[0], CRITERIA[2]], changed);
+    expect(r.passed).toBe(false);
+    expect(r.detail).toContain('"slugify(null) throws a TypeError" points to CI, but CI only proves tests pass');
+    expect(r.detail).toMatch(/^1 of 2 pointers/);
+  });
+  it("recognises the usual wordings", () => {
+    for (const c of ["All existing tests pass", "All tests pass", "CI is green", "The build succeeds", "npm test passes"]) {
+      expect(aboutTestsPassing(c)).toBe(true);
+    }
+    expect(aboutTestsPassing("A new test covers non-string input")).toBe(false);
   });
 });

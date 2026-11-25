@@ -16,7 +16,7 @@ import { hasContent, parsePrBody, parseTaskLine, QUESTION_SECTION } from "./pr-b
 import { buildExcerpts, type Excerpt } from "./excerpts";
 import { checkScope } from "./scope";
 import { checkSecrets, type SecretScanner } from "./secrets";
-import { checkSize } from "./size";
+import { checkSize, generatedFromGitattributes } from "./size";
 import { checkTemplate } from "./template";
 import { CHECK_ORDER, isGate, SITE_CHECK_NAME, type CheckResult } from "./types";
 
@@ -128,10 +128,12 @@ export async function runAllChecks(input: {
   settings: Repo["settings"];
   ci: ReturnType<typeof fromCommitStatus>[];
   scanner: SecretScanner;
+  /** Paths marked linguist-generated in the repo's .gitattributes: skipped by the size cap. */
+  generated?: string[];
 }): Promise<CheckResult[]> {
   const byName = {
     Template: checkTemplate(input.body, input.ref),
-    Size: checkSize(input.files, input.sizeTier, input.settings.sizeCapIgnore),
+    Size: checkSize(input.files, input.sizeTier, [...input.settings.sizeCapIgnore, ...(input.generated ?? [])]),
     Scope: checkScope(input.files, input.allowedPaths, input.settings.offLimitsPaths),
     Secrets: await checkSecrets(input.files, input.scanner),
     CI: checkCi(input.ci),
@@ -265,6 +267,8 @@ export async function runChecks(
     settings: repo.settings,
     ci,
     scanner: deps.scanner,
+    // From the default branch, so a PR can't mark its own files as generated.
+    generated: generatedFromGitattributes((await deps.gh.readFile(repo.fullName, ".gitattributes", repo.defaultBranch).catch(() => null))?.text ?? ""),
   });
 
   const previous = submission.checkResults as StoredChecks | null;

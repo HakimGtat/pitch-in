@@ -121,7 +121,7 @@ export async function checkPush(
   gh: RepoGitHub,
   job: PushAlertJob,
   now: Date = new Date(),
-): Promise<"reviewed" | "alerted_on_merge" | "alert" | "skipped"> {
+): Promise<"reviewed" | "alerted_on_merge" | "alert" | "admin_push" | "skipped"> {
   const [repo] = await db.select().from(repos).where(eq(repos.id, job.repoId));
   if (!repo || repo.removedAt || isZeroSha(job.after)) return "skipped";
   // A forced push rewrites history, even when it lands on an owner-merged commit.
@@ -140,6 +140,11 @@ export async function checkPush(
     }
     await raise(db, repo, "direct_push", { field: "sha", value: job.after }, { pr: pr.number, mergedBy: pr.mergedBy, pusher: job.pusher }, now);
     return "alert";
+  }
+  // Repo admins push their own work to the default branch; that's logged, not alerted (forced pushes alerted above).
+  if (await isRepoAdmin(gh, repo.fullName, job.pusher)) {
+    await writeAudit(db, { actorId: null, action: "push.by_admin", target: repo.fullName, details: { sha: job.after, pusher: job.pusher } });
+    return "admin_push";
   }
   await raise(db, repo, "direct_push", { field: "sha", value: job.after }, { pusher: job.pusher, forced: job.forced, before: job.before }, now);
   return "alert";

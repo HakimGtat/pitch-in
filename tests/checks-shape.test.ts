@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkCi, fromCommitStatus } from "@/lib/checks/ci";
 import { checkScope } from "@/lib/checks/scope";
-import { checkSize, countedLines } from "@/lib/checks/size";
+import { checkSize, countedLines, generatedFromGitattributes } from "@/lib/checks/size";
 import { SITE_CHECK_NAME } from "@/lib/checks/types";
 import type { ChangedFile } from "@/lib/checks/files";
 
@@ -125,5 +125,16 @@ describe("the CI check", () => {
     expect(fromCommitStatus({ context: "ci/jenkins", state: "pending" })).toEqual(run("ci/jenkins", null, "in_progress"));
     expect(fromCommitStatus({ context: "ci/jenkins", state: "error" })).toEqual(run("ci/jenkins", "failure"));
     expect(checkCi([fromCommitStatus({ context: "ci/jenkins", state: "success" })]).passed).toBe(true);
+  });
+});
+
+describe("generated files in .gitattributes", () => {
+  it("become globs the size cap skips", () => {
+    const text = "# comment\n*.snap linguist-generated\n/drizzle/meta/** linguist-generated=true\ndist/ linguist-generated\nsrc/keep.ts -linguist-generated\n*.md text";
+    expect(generatedFromGitattributes(text)).toEqual(["**/*.snap", "drizzle/meta/**", "dist/**"]);
+  });
+  it("don't count toward the cap", () => {
+    const files = [file("src/a.ts", 100), file("tests/__snapshots__/a.test.ts.snap", 900)];
+    expect(checkSize(files, "small", generatedFromGitattributes("*.snap linguist-generated")).passed).toBe(true);
   });
 });

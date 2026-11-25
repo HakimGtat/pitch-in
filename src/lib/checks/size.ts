@@ -49,3 +49,23 @@ export function checkSize(files: ChangedFile[], tier: SizeTier, ignore: string[]
     (skipped ? ` (${formatLines(skipped)} in lockfiles and ignored files not counted)` : "");
   return counted <= cap ? passed("Size", detail) : failed("Size", detail);
 }
+
+/**
+ * Patterns marked `linguist-generated` in a .gitattributes file, as globs the
+ * size cap understands. GitHub collapses these in diffs for the same reason.
+ */
+export function generatedFromGitattributes(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const [pattern, ...attrs] = line.split(/\s+/);
+    const on = attrs.some((a) => a === "linguist-generated" || a === "linguist-generated=true");
+    const off = attrs.some((a) => a === "-linguist-generated" || a === "linguist-generated=false");
+    if (!on || off || !pattern) continue;
+    // A pattern without a slash matches at any depth; a leading slash anchors it to the repo root.
+    const glob = pattern.startsWith("/") ? pattern.slice(1) : pattern.includes("/") ? pattern : `**/${pattern}`;
+    out.push(glob.endsWith("/") ? `${glob}**` : glob);
+  }
+  return out;
+}

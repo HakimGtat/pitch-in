@@ -178,3 +178,12 @@ describe("a forced push", () => {
     expect((await db.select().from(alerts))[0]).toMatchObject({ kind: "direct_push", details: { sha: "m7", forced: true } });
   });
 });
+
+describe("a push by a repo admin", () => {
+  it("is logged, not alerted, unless it's forced", async () => {
+    expect(await checkPush(db, fake.gh, { repoId: repo.id, after: "a1", before: "b0", pusher: "root", forced: false })).toBe("admin_push");
+    expect(await db.select().from(alerts)).toHaveLength(0);
+    expect(await db.select().from(auditLog).where(eq(auditLog.action, "push.by_admin"))).toHaveLength(1);
+    expect(await checkPush(db, fake.gh, { repoId: repo.id, after: "a2", before: "a1", pusher: "root", forced: true })).toBe("alert");
+  });
+});
