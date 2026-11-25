@@ -101,3 +101,21 @@ describe("the owner's own PR for their own task", () => {
     expect((await db.select().from(submissions))[0]).toMatchObject({ prNumber: 12, authorId: olive.id });
   });
 });
+
+describe("the owner's own PR and an expired hold", () => {
+  it("doesn't bring the expired adopter back or give them the credit", async () => {
+    const t0 = new Date("2026-11-25T12:00:00Z");
+    const late = new Date(t0.getTime() + 50 * 3600_000);
+    await adoptTask(db, alice.id, taskId, t0);
+    expect(await linkPullRequest(db, pr("olive"), late)).toMatchObject({ status: "linked" });
+    expect((await loadTaskView(db, taskId, late))?.holder).toBeNull();
+    await handlePrClosed(db, { repoId, prNumber: 5, merged: true, mergedBy: "olive", mergeCommitSha: "m" }, late);
+    expect((await helpedShip(db, alice.id)).count).toBe(0);
+  });
+
+  it("links again when it's closed and reopened", async () => {
+    await linkPullRequest(db, pr("olive"));
+    await handlePrClosed(db, { repoId, prNumber: 5, merged: false, mergedBy: null, mergeCommitSha: null });
+    expect(await linkPullRequest(db, { ...pr("olive"), headSha: "b" })).toMatchObject({ status: "linked", taskId });
+  });
+});

@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { checkMerge, checkPush, PUSH_ALERT_JOB, queuePushCheck, type PushAlertJob } from "@/lib/alerts";
 import { writeAudit } from "@/lib/audit";
 import { gitleaksScanner } from "@/lib/checks/gitleaks";
@@ -7,6 +8,7 @@ import type { SecretScanner } from "@/lib/checks/secrets";
 import { SITE_CHECK_NAME } from "@/lib/checks/types";
 import { getConfig } from "@/lib/config";
 import type { Db } from "@/lib/db/client";
+import { submissions } from "@/lib/db/schema";
 import { createRepoGitHub } from "@/lib/github/app";
 import type { RepoGitHub } from "@/lib/github/repos";
 import type { JobHandler, Logger } from "@/lib/jobs";
@@ -145,7 +147,8 @@ export async function handleGitHubWebhook(
 
     // A linked PR opening renews the adopter's lock (the whole milestone's, for a milestone adoption).
     if (outcome?.status === "linked" && ["opened", "reopened", "ready_for_review"].includes(job.action ?? "")) {
-      await renewLock(db, outcome.taskId, new Date());
+      const [linked] = await db.select({ authorId: submissions.authorId }).from(submissions).where(eq(submissions.id, outcome.submissionId));
+      await renewLock(db, outcome.taskId, new Date(), linked?.authorId);
     }
 
     const headSha = str(obj(pr.head).sha);
@@ -224,9 +227,20 @@ export async function handlePushAlertJob(db: Db, job: PushAlertJob, log: Logger,
 }
 
 export async function handleSweepJob(db: Db, log: Logger, deps: HandlerDeps): Promise<void> {
+  // The sweep never fails as a job: the next five-minute slot is its retry, so failed jobs don't pile up.
   try {
     const r = await runSweep(db, deps.repoGitHub());
-    if (r.queued || r.questions) log.info(`Catch-up sweep: looked at ${r.looked} PR(s), queued checks for ${r.queued}, picked up ${r.questions} question(s)`);
+    if (r.queued || r.questions || r.skippedRepos || r.errors) {
+      log.info(
+        `Catch-up sweep: looked at ${r.looked} PR(s), queued checks for ${r.queued}, picked up ${r.questions} question(s)` +
+          (r.skippedRepos ? `, skipped ${r.skippedRepos} repo(s) the App can't see` : "") +
+          (r.errors ? `, ${r.errors} GitHub error(s)` : ""),
+      );
+    }
+  } catch (err) {
+    // Typically the GitHub App isn't set up yet; nothing to sweep until it is.
+    const why = err instanceof Error ? err.message : String(err);
+    if (!/isn't set up/.test(why)) log.error(`Catch-up sweep skipped: ${why}`);
   } finally {
     // Always schedule the next one, even if GitHub couldn't be reached this time.
     await queueSweep(db, new Date());

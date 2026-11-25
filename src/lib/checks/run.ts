@@ -12,6 +12,7 @@ import { checkCriteria } from "./criteria";
 import { changedLineMap } from "./diff";
 import { checkEvidence } from "./evidence";
 import type { ChangedFile } from "./files";
+import { OPEN_SUBMISSION as OPEN_SUBMISSION_LIST } from "../views";
 import { hasContent, parsePrBody, parseTaskLine, QUESTION_SECTION } from "./pr-body";
 import { buildExcerpts, type Excerpt } from "./excerpts";
 import { checkScope } from "./scope";
@@ -59,6 +60,9 @@ export type StoredChecks = {
   /** The results of the PR's very first check run (for first-pass rates). */
   firstResults?: CheckResult[];
 };
+
+/** "None", "N/A", "No questions": an agent filling in every heading, not asking anything. */
+const NO_QUESTION = /^(none|n\/a|no|nothing|no questions?|not applicable)[.!]?$/i;
 
 export const checksJobKey = (job: ChecksJob, headSha: string) => `checks:${job.repoId}#${job.prNumber}@${headSha}`;
 
@@ -172,7 +176,8 @@ async function linkedSubmission(db: Db, repoId: number, prNumber: number) {
   return row ?? null;
 }
 
-const OPEN_SUBMISSION = new Set<Submission["status"]>(["checking", "checks_failed", "in_review"]);
+/** One list of "the PR is still open" states for the whole site (views.ts). */
+const OPEN_SUBMISSION = new Set<Submission["status"]>(OPEN_SUBMISSION_LIST);
 
 /**
  * The run_checks job. Reads the PR fresh, so it always checks the latest
@@ -191,7 +196,10 @@ export async function runChecks(
   const stillOpen = before && OPEN_SUBMISSION.has(before.submission.status);
   if (!pr) {
     // A pasted link to a PR that doesn't exist mustn't hold the task forever.
-    if (stillOpen) await detachSubmission(db, before.submission.id, before.task.id, now, "the PR doesn't exist");
+    // But a 404 can also mean the App lost access to the repo: then nothing is known, and nothing changes.
+    if (stillOpen && (await deps.gh.getRepo(repo.githubRepoId))) {
+      await detachSubmission(db, before.submission.id, before.task.id, now, "the PR doesn't exist");
+    }
     return { status: "skipped", why: "the PR is gone" };
   }
   if (pr.state !== "open") {
@@ -247,7 +255,7 @@ export async function runChecks(
   }
   // ...or in the PR's description, as a "## Question for owner" section (it arrives with pull_request events).
   const asked = parsePrBody(pr.body).sections[QUESTION_SECTION];
-  if (hasContent(asked)) {
+  if (hasContent(asked) && !NO_QUESTION.test(asked!.trim())) {
     await recordQuestion(
       db,
       // One description question per PR, keyed by the submission (negative, so it can't clash with a GitHub comment id).
@@ -322,17 +330,24 @@ export async function runChecks(
   // GitHub is the owner's inbox: once the PR passes, ask for their review there, so GitHub's own notifications tell them.
   if (status === "in_review" && !stored.reviewRequested) {
     const [owner] = await db.select({ handle: users.handle }).from(users).where(eq(users.id, task.ownerId));
-    if (owner && owner.handle.toLowerCase() !== pr.author.toLowerCase()) {
+    // Done when GitHub took the request, when there's nobody to ask (the owner wrote the PR), or when GitHub
+    // refused it for good (a 4xx). A passing failure (a 5xx, a timeout) is tried again on the next check.
+    let settled = !owner || owner.handle.toLowerCase() === pr.author.toLowerCase();
+    if (!settled) {
       try {
-        await deps.gh.requestReview(repo.fullName, pr.number, owner.handle);
-      } catch {
-        // Not worth failing the checks over: the owner's pages list the PR anyway.
+        await deps.gh.requestReview(repo.fullName, pr.number, owner!.handle);
+        settled = true;
+      } catch (err) {
+        const status = (err as { status?: number }).status ?? 0;
+        settled = status >= 400 && status < 500;
       }
     }
-    await db
-      .update(submissions)
-      .set({ checkResults: { ...stored, reviewRequested: true } })
-      .where(eq(submissions.id, submission.id));
+    if (settled) {
+      await db
+        .update(submissions)
+        .set({ checkResults: { ...stored, reviewRequested: true } })
+        .where(eq(submissions.id, submission.id));
+    }
   }
 
   if (ciPending) {

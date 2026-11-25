@@ -97,7 +97,7 @@ describe("the catch-up sweep", () => {
     await link();
     fake.addPull("acme/site", { number: 5, author: "alice", body: `Task: PI-${taskId}`, headSha: "h1" });
     fake.addPull("acme/site", { number: 8, author: "bob", body: "Fix a typo", headSha: "h8" });
-    expect(await runSweep(db, fake.gh)).toEqual({ looked: 1, queued: 0, questions: 0 });
+    expect(await runSweep(db, fake.gh)).toEqual({ looked: 1, queued: 0, questions: 0, skippedRepos: 0, errors: 0 });
   });
 
   it("runs every five minutes, one job per slot, and the next is queued after each", async () => {
@@ -109,5 +109,39 @@ describe("the catch-up sweep", () => {
     expect(queued[0].runAfter.getTime() % SWEEP_EVERY_MS).toBe(0);
     await runNextJob(db, createHandlers({ repoGitHub: () => fake.gh }), quiet, new Date(queued[0].runAfter.getTime() + 1000));
     expect((await db.select().from(jobs).where(eq(jobs.type, SWEEP_JOB))).filter((j) => j.status === "queued")).toHaveLength(1);
+  });
+});
+
+describe("the sweep when GitHub misbehaves", () => {
+  it("skips a repo the App can't see instead of unlinking its PRs", async () => {
+    await link();
+    fake.world.repos.delete(1);
+    expect(await runSweep(db, fake.gh)).toMatchObject({ skippedRepos: 1, queued: 0 });
+    await runAll();
+    expect((await db.select().from(submissions))[0].status).toBe("checking");
+  });
+
+  it("keeps going past a PR GitHub errors on", async () => {
+    await link();
+    const real = fake.gh.getPullRequest;
+    fake.gh.getPullRequest = async () => {
+      throw new Error("GitHub had a moment");
+    };
+    fake.addPull("acme/site", { number: 9, author: "alice", body: `Task: PI-${taskId}`, headSha: "h9" });
+    const r = await runSweep(db, fake.gh);
+    fake.gh.getPullRequest = real;
+    expect(r).toMatchObject({ errors: 1 });
+    expect(r.looked).toBeGreaterThanOrEqual(1);
+  });
+
+  it("checks again a PR stuck at checking, and one whose description changed", async () => {
+    await link();
+    fake.addPull("acme/site", { number: 5, author: "alice", body: `Task: PI-${taskId}`, headSha: "h1" });
+    const later = new Date(Date.now() + 20 * 60_000);
+    expect(await runSweep(db, fake.gh, later)).toMatchObject({ queued: 1 });
+
+    await db.update(submissions).set({ status: "in_review", checkResults: { pr: { body: `Task: PI-${taskId}` }, results: [] } });
+    fake.world.pulls.get("acme/site#5")!.body = `Task: PI-${taskId}\n\n## Question for owner\nA or B?`;
+    expect(await runSweep(db, fake.gh)).toMatchObject({ queued: 1 });
   });
 });

@@ -208,3 +208,11 @@ describe("a question in the PR description", () => {
     expect(await openQuestionsFor(db, taskId)).toHaveLength(0);
   });
 });
+
+describe("a description section that asks nothing", () => {
+  it("isn't a question", async () => {
+    fake.world.pulls.get("acme/uploader#3")!.body = `Task: PI-${taskId}\n\n## Question for owner\nNone.`;
+    await runChecks(db, { gh: fake.gh, scanner: { scan: async () => [] } }, { repoId, prNumber: 3 });
+    expect(await openQuestionsFor(db, taskId)).toHaveLength(0);
+  });
+});

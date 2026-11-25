@@ -64,7 +64,7 @@ export async function loadTaskViews(db: Db, where: SQL | undefined, now: Date): 
   const adoptionFor = new Map(active.map((a) => [a.adoption.taskId, a]));
 
   const open = await db
-    .select({ taskId: submissions.taskId })
+    .select({ taskId: submissions.taskId, authorId: submissions.authorId })
     .from(submissions)
     .where(and(inArray(submissions.taskId, ids), inArray(submissions.status, [...OPEN_SUBMISSION])));
   const withOpenPr = new Set(open.map((s) => s.taskId));
@@ -72,7 +72,9 @@ export async function loadTaskViews(db: Db, where: SQL | undefined, now: Date): 
   return rows.map(({ task, repoFullName, ownerHandle }) => {
     const a = adoptionFor.get(task.id) ?? null;
     const hasOpenPr = withOpenPr.has(task.id);
-    const held = a !== null && isHeld(a.adoption, now, hasOpenPr);
+    // Only the adopter's own open PR keeps their hold; an owner's own PR on the task doesn't revive a lapsed one.
+    const ownPrOpen = a !== null && open.some((s) => s.taskId === task.id && s.authorId === a.adoption.userId);
+    const held = a !== null && isHeld(a.adoption, now, ownPrOpen);
     const holder: Holder | null = held
       ? { userId: a.adoption.userId, handle: a.handle, milestoneId: a.adoption.milestoneId, expiresAt: a.adoption.expiresAt }
       : null;
@@ -81,7 +83,7 @@ export async function loadTaskViews(db: Db, where: SQL | undefined, now: Date): 
       title: task.title,
       ownerId: task.ownerId,
       sizeTier: task.sizeTier,
-      status: effectiveTaskStatus(task.status, a?.adoption ?? null, now, hasOpenPr),
+      status: effectiveTaskStatus(task.status, a?.adoption ?? null, now, ownPrOpen),
       milestoneId: task.milestoneId,
       position: task.position,
       developersOnly: task.developersOnly,

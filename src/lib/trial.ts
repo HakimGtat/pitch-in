@@ -93,7 +93,8 @@ export async function loadTrialReport(db: Db): Promise<TrialReport> {
     const c = s.checks as StoredChecks | null;
     // The review wait is about owners reviewing coworkers' PRs, so an owner's own PR doesn't count.
     if (s.status === "merged" && c?.readyAt && s.authorId !== s.ownerId) waits.push((s.updatedAt.getTime() - new Date(c.readyAt).getTime()) / 60_000);
-    for (const r of c?.firstResults ?? []) {
+    // First-pass rates measure contributors' PRs, not an owner's own.
+    for (const r of s.authorId !== s.ownerId ? (c?.firstResults ?? []) : []) {
       const f = firstPass.get(r.name);
       if (!f) continue;
       f.of++;
@@ -110,7 +111,7 @@ export async function loadTrialReport(db: Db): Promise<TrialReport> {
   const helpedMilestones = new Set(helped.map((m) => m.task.milestoneId).filter((id): id is number => id !== null));
   const milestonesWithHelp = doneMilestones.filter((m) => helpedMilestones.has(m.id)).length;
 
-  const prsWaitingOnOwner = subs.filter((s) => s.status === "in_review" || s.status === "checks_failed").length;
+  const prsWaitingOnOwner = subs.filter((s) => s.authorId !== s.ownerId && (s.status === "in_review" || s.status === "checks_failed")).length;
   const openQuestions = (await db.select({ answeredAt: questions.answeredAt }).from(questions)).filter((q) => !q.answeredAt).length;
   const openAlerts = (await db.select({ resolvedAt: alerts.resolvedAt }).from(alerts)).filter((a) => !a.resolvedAt).length;
 

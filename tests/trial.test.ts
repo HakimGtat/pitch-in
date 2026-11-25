@@ -94,7 +94,8 @@ describe("the Trial panel", () => {
     expect(Math.round(r.medianReadyToMergedMinutes!)).toBe(10);
     expect(r.targets.find((t) => t.label.startsWith("At least 1 of them not code"))?.met).toBe(true);
     expect(r.targets.find((t) => t.label.startsWith("At least 5"))).toMatchObject({ value: "1", met: false });
-    expect(r.firstPass.find((f) => f.name === "CI")).toEqual({ name: "CI", passed: 2, of: 2 });
+    // The owner's own PR (PR 2) is left out of first-pass rates.
+    expect(r.firstPass.find((f) => f.name === "CI")).toEqual({ name: "CI", passed: 1, of: 1 });
   });
 
   it("counts reopens by the profile of whoever held the task", async () => {

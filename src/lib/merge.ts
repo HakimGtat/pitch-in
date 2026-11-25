@@ -40,12 +40,13 @@ const FINISHED_SUBMISSION = new Set(["merged", "closed", "rejected"]);
  * every task they hold in the milestone for a whole-milestone adoption,
  * otherwise just this task's.
  */
-export async function renewLock(db: Db, taskId: number, now: Date): Promise<number> {
+export async function renewLock(db: Db, taskId: number, now: Date, onlyFor?: number): Promise<number> {
   const [a] = await db
     .select()
     .from(adoptions)
     .where(and(eq(adoptions.taskId, taskId), eq(adoptions.status, "active")));
-  if (!a) return 0;
+  // Only the adopter's own PR renews their lock (not, say, the owner's own PR on the same task).
+  if (!a || (onlyFor !== undefined && a.userId !== onlyFor)) return 0;
   const rows = await db
     .update(adoptions)
     .set({ expiresAt: lockExpiry(now) })
@@ -93,7 +94,8 @@ export async function handlePrClosed(db: Db, pr: ClosedPr, now: Date = new Date(
 
     await tx.update(submissions).set({ status: "merged", updatedAt: now }).where(eq(submissions.id, submission.id));
     await tx.update(tasks).set({ status: "merged", closedAt: now, updatedAt: now }).where(eq(tasks.id, task.id));
-    if (adoption) {
+    // Credit goes to the adopter only when the merged PR was theirs (not an owner's own PR on a lapsed hold).
+    if (adoption && adoption.userId === submission.authorId) {
       // The milestone's other tasks stay the adopter's, with the lock renewed.
       await renewLock(tx, task.id, now);
       await tx.update(adoptions).set({ status: "completed", endedAt: now }).where(eq(adoptions.id, adoption.id));
@@ -119,7 +121,7 @@ export async function handlePrClosed(db: Db, pr: ClosedPr, now: Date = new Date(
     }
 
     await writeAudit(tx, {
-      actorId: adoption?.userId ?? null,
+      actorId: submission.authorId,
       action: "task.merged",
       target: taskRef(task.id),
       details: { pr: pr.prNumber, mergedBy: pr.mergedBy, mergeCommitSha: pr.mergeCommitSha, milestoneDone, projectDone },

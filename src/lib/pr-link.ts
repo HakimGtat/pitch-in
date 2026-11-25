@@ -187,7 +187,9 @@ export async function linkPullRequest(db: Db, pr: PullRequestInfo, now: Date = n
     // Closed earlier and open again: it's the task's PR again if the same person still holds the task.
     const held = await loadTaskView(db, known.taskId, now);
     const finished = !held || held.status === "merged" || held.status === "closed";
-    if (held && !finished && held.holder?.userId === known.authorId) {
+    // ...or it's the owner's own PR and still nobody holds the task.
+    const ownerAgain = held && !held.holder && known.authorId === held.ownerId;
+    if (held && !finished && (held.holder?.userId === known.authorId || ownerAgain)) {
       const other = await otherOpenPr(db, held.id, pr.number);
       if (other !== null) return noteUnlinked(db, pr, oneTaskOnePr(held.id, other), held.id);
       await db
@@ -230,6 +232,10 @@ export async function linkPullRequest(db: Db, pr: PullRequestInfo, now: Date = n
   const other = await otherOpenPr(db, task.id, pr.number);
   if (other !== null) return noteUnlinked(db, pr, oneTaskOnePr(task.id, other), task.id);
   const authorId = ownerDone ? task.ownerId : task.holder!.userId;
+  if (ownerDone && task.adoptionId) {
+    // A hold that ran out with nobody else taking the task: it ends here, so it can't come back with the owner's PR.
+    await db.update(adoptions).set({ status: "expired", endedAt: now }).where(eq(adoptions.id, task.adoptionId));
+  }
 
   const [row] = await db
     .insert(submissions)
