@@ -4,7 +4,7 @@ import { releaseHolding, syncMilestoneStatus } from "./adoption";
 import { writeAudit } from "./audit";
 import { briefToMarkdown, checkText } from "./brief";
 import type { Db } from "./db/client";
-import { submissions, tasks } from "./db/schema";
+import { adoptions, submissions, tasks, users } from "./db/schema";
 import type { RepoGitHub } from "./github/repos";
 import { canReopen } from "./permissions";
 import { taskRef } from "./prompt";
@@ -88,6 +88,14 @@ export async function reopenTask(
       allowedPaths: task.task.allowedPaths,
       brief,
     });
+    // The holder's profile when they took it on (older adoptions fall back to their profile now).
+    const [held] = task.holder
+      ? await tx
+          .select({ profile: adoptions.profile, current: users.profile })
+          .from(adoptions)
+          .innerJoin(users, eq(adoptions.userId, users.id))
+          .where(and(eq(adoptions.taskId, task.id), eq(adoptions.status, "active")))
+      : [];
     const released = await releaseHolding(tx, task.id, now);
     await tx
       .update(tasks)
@@ -110,6 +118,7 @@ export async function reopenTask(
         closedPrs,
         reopened: released.map(taskRef),
         holder: task.holder?.handle ?? null,
+        holderProfile: held ? (held.profile ?? held.current ?? null) : null,
       },
     });
     const reopened = released.includes(task.id) ? released : [task.id, ...released];

@@ -6,19 +6,20 @@ type Props = {
   viewer: PrViewer;
   prNumber: number;
   prUrl: string;
+  draft: boolean;
   question: string;
   answer: { url: string; prompt: string; long: boolean } | null;
 };
 
-/** A question the contributor's agent left on its draft PR. Only the owner gets a button. */
-export function QuestionCard({ viewer, prNumber, prUrl, question, answer }: Props) {
+/** A question the contributor's agent left on its PR. Only the owner gets a button. */
+export function QuestionCard({ viewer, prNumber, prUrl, draft, question, answer }: Props) {
   return (
     <Card className="border-amber-200 bg-amber-50/40">
       <h2 className="font-semibold">Waiting on the owner</h2>
       <p className="mt-2 text-sm text-stone-700">
         The agent working on this stopped and left a question on{" "}
         <a href={prUrl} target="_blank" rel="noopener noreferrer" className="underline">
-          draft PR #{prNumber}
+          {draft ? "draft " : ""}PR #{prNumber}
         </a>
         :
       </p>

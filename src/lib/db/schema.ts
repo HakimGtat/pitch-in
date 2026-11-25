@@ -227,6 +227,8 @@ export const adoptions = pgTable(
       .references(() => users.id),
     // Set when the task was taken as part of a whole milestone.
     milestoneId: integer("milestone_id").references(() => milestones.id),
+    // The adopter's profile when they took it on, so the Trial panel isn't rewritten by a later switch.
+    profile: profileEnum("profile"),
     adoptedAt: timestamp("adopted_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

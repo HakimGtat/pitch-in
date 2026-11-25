@@ -15,7 +15,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const db = getDb();
   const task = Number.isInteger(Number(id)) ? await loadTaskView(db, Number(id), now) : null;
   if (!task) return new Response("No such task.", { status: 404 });
-  if (task.holder?.userId !== user.id) return new Response("Take this task on first.", { status: 403 });
+  const finished = task.status === "merged" || task.status === "closed";
+  const ownWork = task.ownerId === user.id && !task.holder && !finished;
+  if (task.holder?.userId !== user.id && !ownWork) return new Response("Take this task on first.", { status: 403 });
 
   const { prompt } = await promptForTask(db, task, now);
   return new Response(prompt, {

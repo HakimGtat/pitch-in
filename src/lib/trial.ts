@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { StoredChecks } from "./checks/run";
 import { CHECK_ORDER, type CheckName } from "./checks/types";
 import type { Db } from "./db/client";
@@ -40,7 +40,7 @@ const median = (xs: number[]) => {
 export async function loadTrialReport(db: Db): Promise<TrialReport> {
   // Every merged task, with who (if anyone) took it on.
   const mergedTasks = await db
-    .select({ task: tasks, adopterProfile: users.profile, adopterId: adoptions.userId })
+    .select({ task: tasks, adopterProfile: sql<string | null>`coalesce(${adoptions.profile}, ${users.profile})`, adopterId: adoptions.userId })
     .from(tasks)
     .leftJoin(adoptions, and(eq(adoptions.taskId, tasks.id), eq(adoptions.status, "completed")))
     .leftJoin(users, eq(adoptions.userId, users.id))
@@ -64,15 +64,18 @@ export async function loadTrialReport(db: Db): Promise<TrialReport> {
   }
   const helped = mergedTasks.filter((m) => m.adopterId && m.adopterId !== m.task.ownerId);
 
-  // Reopens, by the profile of whoever held the task.
+  // Reopens, by the profile whoever held the task had when they took it on (older entries: their profile now).
   const reopenRows = await db.select({ details: auditLog.details }).from(auditLog).where(eq(auditLog.action, "task.reopened"));
-  const handles = reopenRows.map((r) => (r.details as { holder?: string | null } | null)?.holder).filter((h): h is string => Boolean(h));
+  const reopenDetails = reopenRows
+    .map((r) => r.details as { holder?: string | null; holderProfile?: string | null } | null)
+    .filter((d): d is { holder: string; holderProfile?: string | null } => Boolean(d?.holder));
+  const handles = reopenDetails.filter((d) => !d.holderProfile).map((d) => d.holder);
   const profiles = handles.length
     ? new Map((await db.select({ handle: users.handle, profile: users.profile }).from(users).where(inArray(users.handle, handles))).map((u) => [u.handle, u.profile]))
     : new Map<string, string | null>();
   const reopens = { developer: 0, guided: 0 };
-  for (const h of handles) {
-    if (profiles.get(h) === "guided") reopens.guided++;
+  for (const d of reopenDetails) {
+    if ((d.holderProfile ?? profiles.get(d.holder)) === "guided") reopens.guided++;
     else reopens.developer++;
   }
 

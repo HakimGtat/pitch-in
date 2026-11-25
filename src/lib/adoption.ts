@@ -97,6 +97,7 @@ export async function adoptTask(db: Db, actorId: number, taskId: number, now: Da
       await tx.insert(adoptions).values({
         taskId: task.id,
         userId: actor.id,
+        profile: actor.profile,
         adoptedAt: now,
         expiresAt: lockExpiry(now),
         status: "active",
@@ -140,6 +141,7 @@ export async function adoptMilestone(db: Db, actorId: number, milestoneId: numbe
           taskId,
           userId: actor.id,
           milestoneId,
+          profile: actor.profile,
           adoptedAt: now,
           expiresAt,
           status: "active" as const,

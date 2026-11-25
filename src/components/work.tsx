@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { TaskBrief, TaskKind, SizeTier } from "@/lib/db/schema";
+import { isGate, type CheckName } from "@/lib/checks/types";
 import { taskRef } from "@/lib/prompt";
 import { formatLines, LINE_CAP, TIER_LABEL } from "@/lib/sizing";
 import type { WaitingItem } from "@/lib/questions";
@@ -224,10 +225,15 @@ export function OwnerQueue({
               )}
             </div>
             {i.failing.length ? (
-              <ul className="mt-1 font-mono text-xs text-red-700">
-                {i.failing.map((f) => (
-                  <li key={f}>✗ {f}</li>
-                ))}
+              <ul className="mt-1 font-mono text-xs">
+                {i.failing.map((f) => {
+                  const gate = isGate(f.split(":")[0] as CheckName);
+                  return (
+                    <li key={f} className={gate ? "text-red-700" : "text-amber-700"}>
+                      {gate ? "✗" : "⚠"} {f}
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
           </li>

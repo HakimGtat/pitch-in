@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { parseTaskLine } from "./checks/pr-body";
 import type { StoredChecks } from "./checks/run";
-import { queueChecks } from "./checks/run";
+import { CI_MAX_WAIT_MS, queueChecks } from "./checks/run";
 import { SITE_CHECK_NAME } from "./checks/types";
 import type { Db } from "./db/client";
 import { jobs, repos, submissions, tasks, type Repo } from "./db/schema";
@@ -45,8 +45,14 @@ function needsCheck(
   if (pr.baseRef !== repo.defaultBranch) return true; // retargeted
   if (stored && (stored.pr.body ?? "") !== (pr.body ?? "")) return true; // description edited (a fix, or a question)
   if (submission.status === "checking" && now.getTime() - submission.updatedAt.getTime() > STUCK_CHECKING_MS) return true;
-  // CI failed last time: a re-run on the same commit may have turned it green.
-  if (submission.status === "checks_failed" && stored?.results.some((r) => r.name === "CI" && !r.passed)) return true;
+  // CI failed last time: a re-run on the same commit may have turned it green. Only for an hour after
+  // that run, so a PR that stays red isn't re-checked every five minutes forever; a new push re-checks it anyway.
+  if (
+    submission.status === "checks_failed" &&
+    stored?.results.some((r) => r.name === "CI" && !r.passed) &&
+    now.getTime() - new Date(stored.ranAt).getTime() < CI_MAX_WAIT_MS
+  )
+    return true;
   return false;
 }
 

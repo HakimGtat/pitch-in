@@ -55,10 +55,12 @@ export default async function TaskPage({
   const mine = task.holder?.userId === user.id;
   const next = milestoneTasks ? nextTaskInMilestone(milestoneTasks) : null;
   // Inside a whole-milestone adoption, only the next task is started; the owner reviews it first.
-  const startable = mine && (!next || next.id === task.id);
-  const start = mine ? await promptForTask(db, task, now) : null;
-  const ownerOrAdmin = canCloseOrRelease(user, task).ok;
   const finished = task.status === "merged" || task.status === "closed";
+  // An owner can do their own task while nobody holds it: their PR links as their own work.
+  const ownWork = user.id === task.ownerId && !task.holder && !finished && projectOpen;
+  const startable = (mine && (!next || next.id === task.id)) || ownWork;
+  const start = mine || ownWork ? await promptForTask(db, task, now) : null;
+  const ownerOrAdmin = canCloseOrRelease(user, task).ok;
   const submission = finished ? null : await openSubmissionFor(db, task.id);
   const viewer: PrViewer =
     user.id === task.ownerId
@@ -200,7 +202,7 @@ export default async function TaskPage({
           ) : null}
 
           {question ? (
-            <QuestionCard viewer={viewer} prNumber={question.prNumber} prUrl={prUrl} question={question.body} answer={answer} />
+            <QuestionCard viewer={viewer} prNumber={question.prNumber} prUrl={prUrl} draft={checks?.pr.draft ?? false} question={question.body} answer={answer} />
           ) : null}
 
           {submission ? (
@@ -209,7 +211,13 @@ export default async function TaskPage({
 
           {startable && start && !submission ? (
             <Card className="border-brand-100">
-              <h2 className="font-semibold">Start the work</h2>
+              <h2 className="font-semibold">{ownWork ? "Do it yourself" : "Start the work"}</h2>
+              {ownWork ? (
+                <p className="mt-2 text-sm text-stone-600">
+                  Nobody has taken this on, so you can run it yourself. Your PR links as your own work, and nobody else can take the
+                  task on while it&apos;s open.
+                </p>
+              ) : null}
               {user.profile === "guided" ? (
                 <>
                   <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-stone-700">
@@ -261,7 +269,7 @@ export default async function TaskPage({
             </Card>
           ) : null}
 
-          {task.holder && (mine || user.id === task.ownerId) && !finished && !submission ? (
+          {((task.holder && (mine || user.id === task.ownerId)) || ownWork) && !finished && !submission ? (
             <Card>
               <h2 className="font-semibold">Link a PR</h2>
               <p className="mt-2 text-sm text-stone-600">

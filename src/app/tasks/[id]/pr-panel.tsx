@@ -2,6 +2,7 @@ import { reopenAction } from "@/app/work-actions";
 import { CopyButton } from "@/components/copy-button";
 import { buttonClass, Card, dangerButtonClass, inputClass, secondaryButtonClass } from "@/components/ui";
 import type { StoredChecks } from "@/lib/checks/run";
+import { isGate } from "@/lib/checks/types";
 import type { Submission } from "@/lib/db/schema";
 import { REASON_MAX } from "@/lib/review";
 import type { PrAction, PrViewer } from "@/lib/views";
@@ -37,11 +38,16 @@ export function PrPanel({ taskId, viewer, submission, status, review }: Props) {
         <p className="mt-2 text-sm text-stone-700">{status.headline}</p>
         {checks?.results.length && viewer !== "other" ? (
           <ul className="mt-3 space-y-1 font-mono text-xs">
-            {checks.results.map((r) => (
-              <li key={r.name} className={`whitespace-pre-wrap ${r.passed ? "text-stone-600" : "text-red-700"}`}>
-                {`${r.passed ? "✓" : "✗"} ${r.name.padEnd(9, " ")} ${r.detail}`}
-              </li>
-            ))}
+            {checks.results.map((r) => {
+              // Gates block a merge (red ✗); the format checks only warn (amber ⚠).
+              const mark = r.passed ? "✓" : isGate(r.name) ? "✗" : "⚠";
+              const tone = r.passed ? "text-stone-600" : isGate(r.name) ? "text-red-700" : "text-amber-700";
+              return (
+                <li key={r.name} className={`whitespace-pre-wrap ${tone}`}>
+                  {`${mark} ${r.name.padEnd(9, " ")} ${r.detail}`}
+                </li>
+              );
+            })}
           </ul>
         ) : null}
         {show.includes("open_pr") && prUrl ? (

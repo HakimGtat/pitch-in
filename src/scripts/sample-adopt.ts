@@ -4,7 +4,8 @@ import { adoptMilestone, handBack } from "@/lib/adoption";
 import { checkBrief, emptyBrief, type BriefDraft } from "@/lib/brief";
 import { createDb } from "@/lib/db/client";
 import { promptForTask } from "@/lib/start";
-import { loadTaskView } from "@/lib/views";
+import { nextTaskInMilestone } from "@/lib/adoption-rules";
+import { loadTaskView, loadTaskViews } from "@/lib/views";
 import { adoptions, repos, tasks, users } from "@/lib/db/schema";
 
 // SAMPLE DATA helper for live checks with one GitHub account. It creates a
@@ -110,6 +111,9 @@ async function main() {
       const task = await loadTaskView(db, id, now);
       if (!task) throw new Error("No task with that id.");
       if (task.holder?.userId !== sample.id) throw new Error("The sample user doesn't hold that task. Adopt its milestone first.");
+      // Same rule as the task page: inside a milestone, only the next task is started.
+      const next = task.milestoneId ? nextTaskInMilestone(await loadTaskViews(db, eq(tasks.milestoneId, task.milestoneId), now)) : null;
+      if (next && next.id !== task.id) throw new Error(`Start with PI-${next.id} first: the milestone goes in order, and the owner reviews each task before the next starts.`);
       const { url, long } = await promptForTask(db, task, now);
       console.log(url);
       console.error(`${url.length} characters${long ? ", longer than any link tested so far" : ""}.`);

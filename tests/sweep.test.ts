@@ -144,4 +144,18 @@ describe("the sweep when GitHub misbehaves", () => {
     fake.world.pulls.get("acme/site#5")!.body = `Task: PI-${taskId}\n\n## Question for owner\nA or B?`;
     expect(await runSweep(db, fake.gh)).toMatchObject({ queued: 1 });
   });
+
+  it("re-checks failed CI for an hour after the run, then leaves it until something changes", async () => {
+    await link();
+    fake.addPull("acme/site", { number: 5, author: "alice", body: `Task: PI-${taskId}`, headSha: "h1" });
+    const ranAt = new Date("2026-11-25T12:00:00Z");
+    await db.update(submissions).set({
+      status: "checks_failed",
+      updatedAt: ranAt,
+      checkResults: { ranAt: ranAt.toISOString(), pr: { body: `Task: PI-${taskId}` }, results: [{ name: "CI", passed: false, detail: "test failed" }] },
+    });
+    expect(await runSweep(db, fake.gh, new Date(ranAt.getTime() + 30 * 60_000))).toMatchObject({ queued: 1 });
+    await db.delete(jobs);
+    expect(await runSweep(db, fake.gh, new Date(ranAt.getTime() + 2 * 3600_000))).toMatchObject({ queued: 0 });
+  });
 });

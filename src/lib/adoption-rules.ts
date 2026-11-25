@@ -132,7 +132,7 @@ export function canHandBack(actor: AdoptActor | Actor, held: { holderId: number;
   if (actor.blocked) return deny("Blocked people can't change adoptions.");
   if (held.holderId !== actor.id) return deny("Only the person who took this on can hand it back.");
   if (held.hasOpenPr) {
-    return deny("One of your PRs for this is still open. Wait for the owner's review or close the PR on GitHub, then hand back.");
+    return deny("Your PR is open, so the owner has it from here.");
   }
   return allow;
 }

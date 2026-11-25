@@ -4,7 +4,7 @@ import { adoptTask } from "@/lib/adoption";
 import { emptyBrief } from "@/lib/brief";
 import { runChecks } from "@/lib/checks/run";
 import type { Db } from "@/lib/db/client";
-import { submissions } from "@/lib/db/schema";
+import { submissions, users } from "@/lib/db/schema";
 import { handlePrClosed } from "@/lib/merge";
 import { linkPullRequest } from "@/lib/pr-link";
 import { connectRepo } from "@/lib/repos";
@@ -106,6 +106,22 @@ describe("the Trial panel", () => {
     const r = await loadTrialReport(db);
     expect(r.reopens).toEqual({ developer: 1, guided: 0 });
     expect(r.targets.find((t) => t.label === "Fewer than half of Developer PRs reopened")).toMatchObject({ value: "100%", met: false });
+  });
+
+  it("counts by the profile someone had when they took the work on, not after a later switch", async () => {
+    const a = await task("other");
+    await adoptTask(db, gus.id, a);
+    await prFor(a, "gus", 4);
+    await handlePrClosed(db, { repoId, prNumber: 4, merged: true, mergedBy: "olive", mergeCommitSha: "m4" });
+    const b = await task();
+    await adoptTask(db, gus.id, b);
+    await prFor(b, "gus", 5);
+    await reopenTask(db, fake.gh, olive.id, b, { reason: "Off track.", developersOnly: false });
+
+    await db.update(users).set({ profile: "developer" }).where(eq(users.id, gus.id));
+    const r = await loadTrialReport(db);
+    expect(r.merged.byProfile).toEqual({ developer: 0, guided: 1 });
+    expect(r.reopens).toEqual({ developer: 0, guided: 1 });
   });
 
   it("shows no data rather than zeroes it can't know", async () => {
