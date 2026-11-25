@@ -150,7 +150,7 @@ describe("running the checks on a linked PR", () => {
     expect((await db.select().from(tasks).where(eq(tasks.id, taskId)))[0].status).toBe("in_review");
   });
 
-  it("shows Size failing for an oversized PR and Evidence failing for a dangling pointer", async () => {
+  it("shows Size failing for an oversized PR and a dangling pointer as a warning", async () => {
     const big = [...goodFiles, { path: "src/big.py", additions: 400, deletions: 0, patch: "@@ -0,0 +1,1 @@\n+x" }];
     const dangling = goodBody(taskId, {
       criteria: [
@@ -165,9 +165,9 @@ describe("running the checks on a linked PR", () => {
 
     const run = ours()[0].run;
     expect(run.conclusion).toBe("failure");
-    expect(run.summary.split("\n")[0]).toBe("Pitch In checks: 5 passed, 2 failed");
+    expect(run.summary.split("\n")[0]).toBe("Pitch In checks: 5 passed, 1 failed, 1 warning");
     expect(run.summary).toContain("✗ Size       405 of 300 lines");
-    expect(run.summary).toContain('✗ Evidence   2 of 3 pointers found in the diff; "Empty files get a 400 error" points to src/upload.py:1, an unchanged line');
+    expect(run.summary).toContain('⚠ Evidence   2 of 3 pointers found in the diff; "Empty files get a 400 error" points to src/upload.py:1, an unchanged line');
     expect((await db.select().from(submissions))[0].status).toBe("checks_failed");
   });
 
@@ -189,7 +189,7 @@ describe("running the checks on a linked PR", () => {
     fake.addPull("acme/uploader", { number: 10, author: "alice", body: goodBody(taskId).replace("## Agent\nClaude Code, Claude Sonnet 5.5", "## Agent\n"), headSha: "d1" }, goodFiles);
     fake.setCi("acme/uploader", "d1", [{ name: "test", conclusion: "success" }]);
     await sendPr(10);
-    expect(ours()[0].run.conclusion).toBe("failure");
+    expect(ours()[0].run.conclusion).toBe("neutral");
 
     fake.world.pulls.get("acme/uploader#10")!.body = goodBody(taskId);
     await sendPr(10, "edited");
@@ -346,5 +346,25 @@ describe("GitHub as the owner's inbox", () => {
     fake.setCi("acme/uploader", "r3", [{ name: "test", conclusion: "failure" }]);
     await sendPr(51);
     expect(fake.world.reviewRequests).toEqual([]);
+  });
+});
+
+describe("gates and warnings", () => {
+  it("lets a PR with only format warnings reach review, with a neutral check run", async () => {
+    const sloppy = goodBody(taskId, {
+      criteria: [
+        "- [x] Empty files get a 400 error -> src/upload.py",
+        "- [x] A test covers the empty file -> tests/test_upload.py:1",
+        "- [ ] All existing tests pass -> CI",
+      ],
+    });
+    fake.addPull("acme/uploader", { number: 60, author: "alice", body: sloppy, headSha: "g1" }, goodFiles);
+    fake.setCi("acme/uploader", "g1", [{ name: "test", conclusion: "success" }]);
+    await sendPr(60);
+    const run = ours()[0].run;
+    expect(run.conclusion).toBe("neutral");
+    expect(run.summary.split("\n")[0]).toBe("Pitch In checks: 5 passed, 0 failed, 2 warnings");
+    expect(run.summary).toContain("⚠ Criteria");
+    expect((await db.select().from(submissions))[0].status).toBe("in_review");
   });
 });

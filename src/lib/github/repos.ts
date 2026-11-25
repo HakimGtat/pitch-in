@@ -26,7 +26,7 @@ export type CheckRun = CiRun & { id: number };
 export type CheckRunInput = {
   headSha: string;
   status: "in_progress" | "completed";
-  conclusion?: "success" | "failure";
+  conclusion?: "success" | "failure" | "neutral";
   title: string;
   summary: string;
   /** The "Details" link on GitHub: the task page. */

@@ -8,6 +8,14 @@ export type CheckName = "Template" | "Size" | "Scope" | "Secrets" | "CI" | "Crit
 /** The order the check run lists them in, as in plan.md's example. */
 export const CHECK_ORDER: CheckName[] = ["Template", "Size", "Scope", "Secrets", "CI", "Criteria", "Evidence"];
 
+/**
+ * Gates hold a PR back from review when they fail. The other three check the
+ * PR description's format and only warn (plan.md, "Decided after the
+ * Milestone 4 review").
+ */
+export const GATES: CheckName[] = ["Size", "Scope", "Secrets", "CI"];
+export const isGate = (name: CheckName) => GATES.includes(name);
+
 /** One line of the check run: `✓ Size       142 of 300 lines`. */
 export type CheckResult = { name: CheckName; passed: boolean; detail: string };
 

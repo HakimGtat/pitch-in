@@ -143,3 +143,24 @@ describe("fences in the packet", () => {
     expect(p).toContain("````diff\n+  15 | ```\n````");
   });
 });
+
+describe("a packet with format warnings", () => {
+  it("is ready, and lists the warnings first", () => {
+    const warned = checks({
+      results: results.map((r) => (r.name === "Evidence" ? { ...r, passed: false, detail: '1 of 2 pointers found in the diff; "x" has no pointer' } : r)),
+      passed: 6,
+      failed: 0,
+      warnings: 1,
+    });
+    expect(packetReady(warned)).toBe(true);
+    const p = buildReviewPacket(input({ checks: warned }));
+    expect(p.indexOf("## Format warnings")).toBeLessThan(p.indexOf("## Summary"));
+    expect(p).toContain('- Evidence: 1 of 2 pointers found in the diff; "x" has no pointer');
+    expect(p).toContain("Pitch In checks: 6 passed, 0 failed, 1 warning");
+    expect(p).toContain("⚠ Evidence");
+  });
+
+  it("isn't ready when a gate failed", () => {
+    expect(packetReady(checks({ results: results.map((r) => (r.name === "Scope" ? { ...r, passed: false } : r)), passed: 6, failed: 1 }))).toBe(false);
+  });
+});

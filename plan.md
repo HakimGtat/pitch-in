@@ -40,6 +40,18 @@ Working name: Pitch In (check for clashes before any public version). The folder
 | This project's code | Public repo, MIT license |
 | Public version | Parked. A separate product, not part of this build |
 
+### Decided after the Milestone 4 review (2026-11-25)
+
+A bug hunt and a design critique ran after Milestone 4; their fixes are built. These rule changes came out of it:
+
+- **Gates and warnings.** Scope, Secrets, CI and Size are gates: a PR that fails one isn't ready for review. Template, Criteria and Evidence check the PR description's format; they warn instead of block, so one bad pointer no longer hides the review. The owner still gets the review packet, with the warnings at the top.
+- **`CI` as a pointer** is only for a criterion about tests or CI passing. Any other criterion needs a `file:line` pointer.
+- **Pushes by repo admins** to the default branch don't raise a direct-push alert (owners push their own work), except forced pushes. They're still written to the audit log.
+- **Generated files** marked `linguist-generated` in the repo's `.gitattributes` don't count toward the size cap, like the repo settings' ignore list.
+- **Kept as they are:** the 48-hour lock with separate Take on and Start; strict milestone order and whole-milestone adoption (revisit with trial data); test lines count fully toward the cap.
+- **Deferred:** the contributor's agent re-reading its own check run and fixing the format (less needed now that format only warns; needs a live test that a web session can read check runs); an automatic first-pass review on the owner's account (bends "a person presses start").
+- **The monthly admin report** becomes a Trial panel on the admin page, kept current instead of monthly.
+
 ## Profiles
 
 At first sign-in the site asks **"Have you worked with a coding agent like Claude Code before?"** Members of the `ai-team` GitHub team (if the company has one) get it pre-answered as yes.
@@ -65,7 +77,7 @@ Each person also sets **"How much do you want to take on?"** on their profile (s
 4. A coworker picks how much they want to take on. The board shows work that fits, and they adopt one task or a whole milestone (48-hour lock).
 5. They click **Start in Claude**. Claude Code on the web opens with the repo and prompt filled in. They press Enter and wait. Their agent builds the work, reviews its own diff against the brief, and opens the PR in the [token-saving format](#review-friendly-prs). If a wrong guess would waste the run, it [leaves a question for the owner](#questions-for-the-owner) on a draft PR and ends the run. Claude Code on the web opens the PR itself, as a **draft** (the prototype saw this; there was no Create PR step to click). Their part is done there; they don't need to come back. Developers can instead copy the brief into any agent.
 6. The PR body starts with `Task: <task id>` so the site links it. In the prototype the PR kept that first line and all six template sections, so the paste-the-link fallback is kept but was not needed. The PR is authored by the contributor's own GitHub account, which is what "only the adopter's PR links" relies on (the account Claude is connected to must match the username they signed in with). If it doesn't link, the owner (or the contributor, if they happen to look) pastes the PR link into the task page.
-7. The GitHub App runs seven automatic checks: plain code, no AI. A PR that fails any of them never reaches review: the owner fixes what's free to fix (a PR body edit, say) or reopens the task. The contributor sees the result but isn't asked to do anything.
+7. The GitHub App runs seven automatic checks: plain code, no AI. A PR that fails a gate (scope, secrets, CI, size) isn't ready for review; format problems (template, criteria, evidence) only warn. The owner fixes what's free to fix (a PR body edit, say) or reopens the task. The contributor sees the result but isn't asked to do anything.
 8. The owner reviews with their own agent (**Review in Claude**, from a prepared review packet), then accepts and merges on GitHub, has their agent fix small problems first, or reopens the task with notes for the next person.
 9. On a milestone, the contributor moves on to its next task, or hands back any time none of their PRs is open. Whatever is left goes back on the board for someone else to continue.
 
@@ -126,7 +138,7 @@ Work bigger than Large is a project with milestones, split into tasks. Every PR 
 
 The cap numbers are placeholders. The prototype only tested 100 lines and found that tiny. After each PR the contributor can note roughly how much usage it took (`usage_note`), so caps and estimates can be calibrated.
 
-The size cap counts lines added plus lines removed. It skips lockfiles and the generated files listed in repo settings. Tests count.
+The size cap counts lines added plus lines removed. It skips lockfiles, the generated files listed in repo settings, and files marked `linguist-generated` in `.gitattributes`. Tests count.
 
 ### The contributor's choice: "How much do you want to take on?"
 
@@ -295,7 +307,7 @@ Milestone statuses: `open` -> `in_progress` (any task adopted or merged) -> `don
 
 ## Review-friendly PRs
 
-A PR only reaches review when it is small, tied to one task, and passes every check. A PR with failing checks shows its results on the task page and the owner's pages; the owner fixes what's free to fix (a PR body edit, say) or reopens the task, without spending agent usage on it. The contributor is never asked to fix it.
+A PR only reaches review when it is small, tied to one task, and passes every gate (scope, secrets, CI, size). Format problems (template, criteria, evidence) show as warnings in the review packet instead of holding the PR back. A PR with failing checks shows its results on the task page and the owner's pages; the owner fixes what's free to fix (a PR body edit, say) or reopens the task, without spending agent usage on it. The contributor is never asked to fix it.
 
 PR rules:
 - One task, one PR. Body starts with `Task: <task id>` so the site links it. A milestone is several tasks, so several PRs.
@@ -345,7 +357,9 @@ Automatic checks, posted as one GitHub check run per linked PR. They are plain c
 | Secrets | A key, token or password pattern appears in the diff (gitleaks, a rules-based scanner) |
 | CI | The repo's own checks fail (tests for code, a lint or link check for docs and research). The site's own check run is ignored here |
 | Criteria | The PR doesn't list every acceptance criterion from the brief, word for word, all ticked |
-| Evidence | A criterion's pointer (`file:line`) isn't inside a changed part of the diff. "CI" is a valid pointer for "all tests pass" |
+| Evidence | A criterion's pointer (`file:line`) isn't inside a changed part of the diff. "CI" is a valid pointer only for a criterion about tests or CI passing |
+
+Scope, Secrets, CI and Size are gates; Template, Criteria and Evidence warn.
 
 A contributor sees the result as one check run, for example:
 
@@ -388,7 +402,7 @@ Agents can't talk live: each one runs in its own person's session, the site neve
 
 Free GitHub orgs can't protect branches on private repos, so anyone with push access could merge their own PR. Until the company upgrades:
 - The site watches every merge and every push to the default branch.
-- If a PR is merged by anyone other than the task owner or a repo admin (admin status comes from GitHub's collaborator permission API, so legitimate merges don't set off the alert), or the default branch changes without an owner-merged PR, the admin page shows an alert, the task page shows a warning, and an `alerts` row and an `audit_log` row are written.
+- If a PR is merged by anyone other than the task owner or a repo admin (admin status comes from GitHub's collaborator permission API, so legitimate merges don't set off the alert), or the default branch changes without an owner-merged PR (pushes by repo admins don't count, except forced pushes), the admin page shows an alert, the task page shows a warning, and an `alerts` row and an `audit_log` row are written.
 
 ## Architecture and stack
 
@@ -500,7 +514,7 @@ Reworked on 2026-11-24 so a contributor's part ends at the PR (see [A contributo
 ### Milestone 5: Demo-org trial
 - A free GitHub org I own, with public sample repos of different kinds (a small website, an automation script, a research repo) and sample projects and tasks, clearly labeled as sample data. Public repos get branch protection for free.
 - Individual testers use it as both Developer and Guided users.
-- "Helped ship" list on profiles; monthly admin report (work done for others, by estimate and kind, with contributors' usage notes).
+- "Helped ship" list on profiles; a Trial panel on the admin page (work done for others by estimate, kind and profile, review wait, reopen rate, first-pass rate per check).
 - Done when: at least one Developer PR and one Guided PR are merged end to end, at least one of them non-code, and one milestone is finished by two different people.
 
 ### Milestone 6: Company trial
@@ -541,7 +555,7 @@ Hitting them is the case for the pitch list.
 | The company moves to pay-per-use Enterprise billing | There'd be no leftover usage: a guided user's run would cost the same as the owner's. Revisit the pitch if that happens |
 | No branch protection on a free GitHub org | Unreviewed-merge alert, a guided walkthrough that never shows merging, low-stakes repos, GitHub Team on the pitch list |
 | The smee relay exposes webhook contents and drops events while offline | Unguessable channel URL, low-stakes repos, redelivery from GitHub, direct webhooks on the pitch list |
-| Low-quality PRs waste owners' time and usage | Per-task caps, big work split into milestone tasks, CI required, the criteria and evidence checks, failing PRs never reach review, the owner reopens with notes for the next person, admins can block |
+| Low-quality PRs waste owners' time and usage | Per-task caps, big work split into milestone tasks, CI required, the criteria and evidence checks, PRs failing a gate never reach review, the owner reopens with notes for the next person, admins can block |
 | Planning and reviews use up the owner's Claude usage | Free checks first; contributors self-review and write the pointer-based PR format; the owner's agent reads a review packet, not the repo; small fixes happen once, in the owner's own review session; planning settles questions up front |
 | A contributor's agent writes evidence pointers that look right but aren't | The evidence check proves each pointer lands in the diff; the owner's agent checks what it points at |
 | Guided users can't judge the result, and the owner may not be able to either (the prototype review took 30 seconds on code the reviewer couldn't read) | Checks gate every PR, the owner reviews every PR with their own agent from a review packet, and rejections are tracked by profile |

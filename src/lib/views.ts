@@ -280,7 +280,9 @@ export function prStatusFor(
       : "Checks are running."
     : failed
       ? "Some checks failed. You can fix what's free to fix on GitHub (a PR description edit, say) and the checks run again, or reopen the task with a short reason. Nothing expires while you decide."
-      : "All seven checks passed. It's ready for your review.";
+      : failing.length
+        ? "It passed every gate and is ready for your review. The PR description has format warnings (below); the review packet flags them."
+        : "All seven checks passed. It's ready for your review.";
   const actions: PrAction[] = ["open_pr"];
   if (ready && viewer === "owner") actions.push("review");
   actions.push("reopen");

@@ -1,5 +1,6 @@
 import { parsePrBody } from "./checks/pr-body";
-import { resultLine, type StoredChecks } from "./checks/run";
+import { resultLine, tallyText, type StoredChecks } from "./checks/run";
+import { isGate } from "./checks/types";
 import type { TaskKind } from "./db/schema";
 
 // The review packet (plan.md, "Review with the owner's agent"): what the
@@ -75,6 +76,16 @@ export function buildReviewPacket(input: PacketInput): string {
         : `The output (${input.output}) is in the PR's files.`,
     );
   }
+  const warnings = checks.results.filter((r) => !r.passed && !isGate(r.name));
+  if (warnings.length) {
+    parts.push(
+      [
+        "## Format warnings",
+        "The PR description doesn't fully follow the template, so some pointers below may be missing or off. Check those criteria in the PR's own files.",
+        ...warnings.map((w) => `- ${w.name}: ${w.detail}`),
+      ].join("\n"),
+    );
+  }
   parts.push(`## Summary\n${body.sections.Summary || "(none given)"}`);
 
   const criteria = checks.excerpts.map((e, i) => {
@@ -89,8 +100,8 @@ export function buildReviewPacket(input: PacketInput): string {
   parts.push(`## Acceptance criteria and evidence\n\n${criteria.join("\n\n")}`);
   parts.push(`## Where to look\n${body.sections["Where to look"] || "(none given)"}`);
   parts.push(`## Not done or assumed\n${body.sections["Not done or assumed"] || "(none given)"}`);
-  parts.push(
-    `## Checks\nPitch In checks: ${checks.passed} passed, ${checks.failed} failed\n${fenceFor(checks.results.map(resultLine).join("\n"))}\n${checks.results.map(resultLine).join("\n")}\n${fenceFor(checks.results.map(resultLine).join("\n"))}`,
-  );
+  const lines = checks.results.map(resultLine).join("\n");
+  const f = fenceFor(lines);
+  parts.push(`## Checks\nPitch In checks: ${tallyText(checks.results)}\n${f}\n${lines}\n${f}`);
   return parts.join("\n\n") + "\n";
 }

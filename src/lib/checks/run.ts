@@ -18,7 +18,7 @@ import { checkScope } from "./scope";
 import { checkSecrets, type SecretScanner } from "./secrets";
 import { checkSize } from "./size";
 import { checkTemplate } from "./template";
-import { CHECK_ORDER, SITE_CHECK_NAME, type CheckResult } from "./types";
+import { CHECK_ORDER, isGate, SITE_CHECK_NAME, type CheckResult } from "./types";
 
 // Running the seven checks on a PR and posting them as one GitHub check run
 // (plan.md, "Review-friendly PRs"). The worker reads the PR, its files and its
@@ -41,7 +41,10 @@ export type StoredChecks = {
   ranAt: string;
   results: CheckResult[];
   passed: number;
+  /** Gates that failed: the PR isn't ready for review. */
   failed: number;
+  /** Format checks that failed: shown, but they don't hold the PR back. */
+  warnings?: number;
   /** The repo's CI hadn't finished yet; the worker checks again. */
   ciPending: boolean;
   /** When this commit's CI was first seen still running; the wait stops an hour after it. */
@@ -72,11 +75,25 @@ export async function queueChecks(db: Db, job: ChecksJob, headSha: string, now: 
 }
 
 /** `✓ Size       142 of 300 lines`, as in plan.md's example. */
-export const resultLine = (r: CheckResult) => `${r.passed ? "✓" : "✗"} ${r.name.padEnd(10)} ${r.detail}`;
+/** ✓ passed, ✗ a gate failed, ⚠ a format warning. */
+export const resultLine = (r: CheckResult) => `${r.passed ? "✓" : isGate(r.name) ? "✗" : "⚠"} ${r.name.padEnd(10)} ${r.detail}`;
+
+/** Counts for a set of results: gates that failed hold the PR back, format problems only warn. */
+export function tally(results: CheckResult[]) {
+  const failed = results.filter((r) => !r.passed && isGate(r.name)).length;
+  const warnings = results.filter((r) => !r.passed && !isGate(r.name)).length;
+  return { passed: results.length - failed - warnings, failed, warnings };
+}
+
+/** "6 passed, 0 failed, 1 warning", as in plan.md's example plus warnings. */
+export function tallyText(results: CheckResult[]): string {
+  const t = tally(results);
+  return `${t.passed} passed, ${t.failed} failed${t.warnings ? `, ${t.warnings} ${t.warnings === 1 ? "warning" : "warnings"}` : ""}`;
+}
 
 export function checkRunOutput(results: CheckResult[], ciPending: boolean): CheckRunInput & { headSha: "" } {
-  const failed = results.filter((r) => !r.passed).length;
-  const head = `${results.length - failed} passed, ${failed} failed`;
+  const { failed, warnings } = tally(results);
+  const head = tallyText(results);
   const summary = [
     `Pitch In checks: ${head}${ciPending ? " (waiting for CI to finish)" : ""}`,
     "",
@@ -84,14 +101,17 @@ export function checkRunOutput(results: CheckResult[], ciPending: boolean): Chec
     ...results.map(resultLine),
     "```",
     "",
-    failed === 0 && !ciPending
-      ? "Ready for the owner's review."
-      : "The owner handles anything that failed. Nothing is needed from the contributor.",
+    ciPending || failed
+      ? "The owner handles anything that failed. Nothing is needed from the contributor."
+      : warnings
+        ? "Ready for the owner's review. The warnings are about the PR description's format; the owner's review covers them. Nothing is needed from the contributor."
+        : "Ready for the owner's review.",
   ].join("\n");
+  const conclusion = failed ? ("failure" as const) : warnings ? ("neutral" as const) : ("success" as const);
   return {
     headSha: "",
     status: ciPending ? "in_progress" : "completed",
-    ...(ciPending ? {} : { conclusion: failed === 0 ? ("success" as const) : ("failure" as const) }),
+    ...(ciPending ? {} : { conclusion }),
     title: ciPending ? `${head}, waiting for CI` : head,
     summary,
   };
@@ -252,14 +272,15 @@ export async function runChecks(
   const ciPendingSince = sameSha && previous?.ciPending && previous.ciPendingSince ? previous.ciPendingSince : now.toISOString();
   const ciRunning = results.some((r) => r.name === "CI" && /still running|no CI results yet/.test(r.detail));
   const ciPending = ciRunning && now.getTime() - new Date(ciPendingSince).getTime() < CI_MAX_WAIT_MS;
-  const failed = results.filter((r) => !r.passed).length;
+  const { passed, failed, warnings } = tally(results);
 
   const stored: StoredChecks = {
     headSha: pr.headSha,
     ranAt: now.toISOString(),
     results,
-    passed: results.length - failed,
+    passed,
     failed,
+    warnings,
     ciPending,
     ciPendingSince: ciPending ? ciPendingSince : null,
     pr: { title: pr.title, url: pr.url, draft: pr.draft, body: pr.body ?? "", headRef: pr.headRef, author: pr.author },
@@ -315,7 +336,7 @@ export async function runChecks(
       })
       .onConflictDoNothing({ target: jobs.dedupeKey });
   }
-  return { status: "checked", passed: results.length - failed, failed, ciPending };
+  return { status: "checked", passed, failed, ciPending };
 }
 
 /** GitHub sends no patch for very large diffs; fetch those files whole (text only, up to 1 MB) so Secrets can scan them. */
